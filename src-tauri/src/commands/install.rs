@@ -243,32 +243,45 @@ fn run_git_with_pty(
         SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
     }
 
-    // Build full command line
-    let git_args: Vec<String> = args.iter().map(|s| {
-        if s.contains(' ') {
-            format!("\"{}\"", s)
-        } else {
-            s.to_string()
-        }
-    }).collect();
+    let working_dir_str = working_dir.to_string_lossy().to_string();
 
-    let command_line = format!("{} {}", git_path, git_args.join(" "));
+    // Build command arguments
+    // For clone command, replace "." destination with full path
+    // For other commands, use -C flag to set working directory
+    let is_clone = args.first() == Some(&"clone");
+
+    let full_args: Vec<String> = if is_clone {
+        // For clone, replace "." with the full path
+        args.iter().map(|arg| {
+            if *arg == "." {
+                format!("\"{}\"", working_dir_str)
+            } else if arg.contains(' ') {
+                format!("\"{}\"", arg)
+            } else {
+                arg.to_string()
+            }
+        }).collect()
+    } else {
+        // For other commands, use -C flag
+        let mut v: Vec<String> = vec![
+            "-C".to_string(),
+            format!("\"{}\"", working_dir_str),
+        ];
+        for arg in args {
+            if arg.contains(' ') {
+                v.push(format!("\"{}\"", arg));
+            } else {
+                v.push(arg.to_string());
+            }
+        }
+        v
+    };
+
+    let command_line = format!("{} {}", git_path, full_args.join(" "));
 
     // Spawn process using ConPTY (Windows Pseudo Console)
     // This makes git think it's connected to a real terminal
     let mut proc = spawn(&command_line)
-        .map_err(|e| {
-            unsafe { SetThreadExecutionState(ES_CONTINUOUS); }
-            format!("Failed to spawn process with ConPTY: {}", e)
-        })?;
-
-    // Set working directory isn't directly supported by conpty::spawn,
-    // so we need to cd first
-    // Actually, let's use a different approach - build a cmd command that cd's first
-    drop(proc);
-
-    let cd_and_run = format!("cd /d \"{}\" && {}", working_dir.display(), command_line);
-    let mut proc = spawn(&format!("cmd /c {}", cd_and_run))
         .map_err(|e| {
             unsafe { SetThreadExecutionState(ES_CONTINUOUS); }
             format!("Failed to spawn process with ConPTY: {}", e)
@@ -383,7 +396,8 @@ pub async fn start_installation(textures_dir: String, window: Window) -> Result<
             .map_err(|e| format!("Failed to clean temp directory: {}", e))?;
     }
 
-    // Create temp directory
+    // Create temp directory (only on macOS - on Windows, git clone will create it)
+    #[cfg(not(target_os = "windows"))]
     fs::create_dir_all(&temp_path)
         .map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
