@@ -3,7 +3,10 @@ use regex::Regex;
 use serde::Serialize;
 use std::io::{BufReader, Read as IoRead};
 use std::path::PathBuf;
+#[cfg(not(target_os = "windows"))]
 use std::process::{Command, Stdio};
+#[cfg(target_os = "windows")]
+use std::process::Command;
 use std::fs;
 use tauri::{Emitter, Window};
 
@@ -342,7 +345,7 @@ fn run_git_with_pty(
     }
 
     // Wait for process to exit and check status
-    let success = proc.wait(None).map_err(|e| {
+    let exit_code = proc.wait(None).map_err(|e| {
         unsafe { SetThreadExecutionState(ES_CONTINUOUS); }
         format!("Failed to wait for process: {}", e)
     })?;
@@ -352,7 +355,8 @@ fn run_git_with_pty(
         SetThreadExecutionState(ES_CONTINUOUS);
     }
 
-    Ok(success)
+    // Exit code 0 means success
+    Ok(exit_code == 0)
 }
 
 /// Run the git sparse checkout installation
