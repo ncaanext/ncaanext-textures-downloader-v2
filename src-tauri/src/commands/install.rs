@@ -287,81 +287,76 @@ fn run_git_with_pty(
             format!("Failed to spawn process with ConPTY: {}", e)
         })?;
 
-    // Read output from the PTY
-    let mut output = proc.output().map_err(|e| {
+    // Read output from the PTY in a separate thread
+    // This prevents blocking if the PTY doesn't send EOF properly
+    let output = proc.output().map_err(|e| {
         unsafe { SetThreadExecutionState(ES_CONTINUOUS); }
         format!("Failed to get process output: {}", e)
     })?;
 
-    let mut buffer = [0u8; 1];
-    let mut line_buffer = Vec::new();
+    let window_clone = window.clone();
+    let default_stage_owned = default_stage.to_string();
 
-    loop {
-        match output.read(&mut buffer) {
-            Ok(0) => break, // EOF
-            Ok(_) => {
-                let byte = buffer[0];
-                if byte == b'\r' || byte == b'\n' {
-                    if !line_buffer.is_empty() {
-                        if let Ok(line) = String::from_utf8(line_buffer.clone()) {
-                            let line = line.trim();
-                            if !line.is_empty() {
-                                let (detected_stage, percent) = detect_git_stage(line);
-                                let stage = if detect_stages {
-                                    detected_stage.unwrap_or(default_stage)
-                                } else {
-                                    default_stage
-                                };
+    let reader_handle = std::thread::spawn(move || {
+        let mut output = output;
+        let mut buffer = [0u8; 1];
+        let mut line_buffer = Vec::new();
 
-                                let _ = window.emit(
-                                    "install-progress",
-                                    ProgressPayload {
-                                        stage: stage.to_string(),
-                                        message: line.to_string(),
-                                        percent,
-                                    },
-                                );
+        loop {
+            match output.read(&mut buffer) {
+                Ok(0) => break, // EOF
+                Ok(_) => {
+                    let byte = buffer[0];
+                    if byte == b'\r' || byte == b'\n' {
+                        if !line_buffer.is_empty() {
+                            if let Ok(line) = String::from_utf8(line_buffer.clone()) {
+                                let line = line.trim();
+                                if !line.is_empty() {
+                                    let (detected_stage, percent) = detect_git_stage(line);
+                                    let stage = if detect_stages {
+                                        detected_stage.unwrap_or(&default_stage_owned)
+                                    } else {
+                                        &default_stage_owned
+                                    };
+
+                                    let _ = window_clone.emit(
+                                        "install-progress",
+                                        ProgressPayload {
+                                            stage: stage.to_string(),
+                                            message: line.to_string(),
+                                            percent,
+                                        },
+                                    );
+                                }
                             }
+                            line_buffer.clear();
                         }
-                        line_buffer.clear();
+                    } else {
+                        line_buffer.push(byte);
                     }
-                } else {
-                    line_buffer.push(byte);
                 }
-            }
-            Err(_) => break,
-        }
-    }
-
-    // Handle remaining data
-    if !line_buffer.is_empty() {
-        if let Ok(line) = String::from_utf8(line_buffer) {
-            let line = line.trim();
-            if !line.is_empty() {
-                let (detected_stage, percent) = detect_git_stage(line);
-                let stage = if detect_stages {
-                    detected_stage.unwrap_or(default_stage)
-                } else {
-                    default_stage
-                };
-
-                let _ = window.emit(
-                    "install-progress",
-                    ProgressPayload {
-                        stage: stage.to_string(),
-                        message: line.to_string(),
-                        percent,
-                    },
-                );
+                Err(_) => break,
             }
         }
-    }
+    });
 
-    // Wait for process to exit and check status
+    // Wait for process to exit (this returns even if reader is still running)
     let exit_code = proc.wait(None).map_err(|e| {
         unsafe { SetThreadExecutionState(ES_CONTINUOUS); }
         format!("Failed to wait for process: {}", e)
     })?;
+
+    // Drop proc to close the PTY, which should cause the reader to get EOF
+    drop(proc);
+
+    // Give the reader thread a short time to finish reading any buffered output
+    // Don't block forever - if it's stuck, just move on
+    let join_timeout = std::time::Duration::from_secs(2);
+    let start = std::time::Instant::now();
+    while !reader_handle.is_finished() && start.elapsed() < join_timeout {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    // Don't call join() - if thread is stuck, let it be orphaned
 
     // Restore normal sleep behavior
     unsafe {
