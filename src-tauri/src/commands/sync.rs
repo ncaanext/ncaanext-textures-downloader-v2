@@ -98,26 +98,38 @@ fn is_text_content(content: &[u8]) -> bool {
     !content[..check_len].contains(&0)
 }
 
-/// Compute git blob SHA for a file (same format git uses)
-/// Normalizes CRLF to LF for text files to match git's stored format
-fn compute_git_blob_sha(path: &Path) -> Result<String, String> {
-    let content = fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
-
-    // For text files, normalize CRLF to LF (git stores with LF, Windows checkout converts to CRLF)
-    let content = if is_text_content(&content) {
-        // Replace CRLF with LF
-        let mut normalized = Vec::with_capacity(content.len());
-        let mut i = 0;
-        while i < content.len() {
-            if i + 1 < content.len() && content[i] == b'\r' && content[i + 1] == b'\n' {
+/// Normalize line endings: CRLF -> LF, standalone CR -> LF
+fn normalize_line_endings(content: Vec<u8>) -> Vec<u8> {
+    let mut normalized = Vec::with_capacity(content.len());
+    let mut i = 0;
+    while i < content.len() {
+        if content[i] == b'\r' {
+            // Check if this is CRLF or standalone CR
+            if i + 1 < content.len() && content[i + 1] == b'\n' {
+                // CRLF -> LF
                 normalized.push(b'\n');
                 i += 2;
             } else {
-                normalized.push(content[i]);
+                // Standalone CR -> LF
+                normalized.push(b'\n');
                 i += 1;
             }
+        } else {
+            normalized.push(content[i]);
+            i += 1;
         }
-        normalized
+    }
+    normalized
+}
+
+/// Compute git blob SHA for a file (same format git uses)
+/// Normalizes line endings for text files to match git's stored format
+fn compute_git_blob_sha(path: &Path) -> Result<String, String> {
+    let content = fs::read(path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    // For text files, normalize line endings (git stores with LF)
+    let content = if is_text_content(&content) {
+        normalize_line_endings(content)
     } else {
         content
     };
