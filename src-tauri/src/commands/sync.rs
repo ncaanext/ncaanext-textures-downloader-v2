@@ -825,7 +825,8 @@ async fn run_full_sync(
 
     // Fetch GitHub tree
     let (remote_files, commit_sha) = fetch_github_tree(token).await?;
-    let remote_count = remote_files.len();
+    // Count excluding user-customs and hidden files for accurate comparison
+    let remote_count = remote_files.keys().filter(|p| !should_skip_path(p)).count();
 
     let _ = window.emit("sync-progress", SyncProgressPayload {
         stage: "scanning".to_string(),
@@ -999,7 +1000,7 @@ pub async fn run_verification_scan(
 
     let _ = window.emit("sync-progress", SyncProgressPayload {
         stage: "verifying".to_string(),
-        message: "Running verification scan...".to_string(),
+        message: "Fetching repository file list...".to_string(),
         current: None,
         total: None,
     });
@@ -1007,12 +1008,22 @@ pub async fn run_verification_scan(
     // Fetch full repo tree
     let (remote_files, _) = fetch_github_tree(&github_token).await?;
 
+    // Count remote files excluding user-customs and hidden files
+    let remote_file_count = remote_files.keys().filter(|p| !should_skip_path(p)).count();
+
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "verifying".to_string(),
+        message: format!("Scanning local files and computing hashes (this may take a few minutes)..."),
+        current: None,
+        total: None,
+    });
+
     // Build local file map (with hashes)
     let local_files = build_local_file_map(&textures_path)?;
 
     let _ = window.emit("sync-progress", SyncProgressPayload {
         stage: "verifying".to_string(),
-        message: format!("Comparing {} local files against {} repo files...", local_files.len(), remote_files.len()),
+        message: format!("Comparing {} local files against {} repo files (this may take a few minutes)...", local_files.len(), remote_file_count),
         current: None,
         total: None,
     });
