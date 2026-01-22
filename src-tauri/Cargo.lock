@@ -463,6 +463,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "conpty"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b72b06487a0d4683349ad74d62e87ad639b09667082b3c495c5b6bab7d84b3da"
+dependencies = [
+ "windows 0.44.0",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2694,6 +2703,7 @@ name = "ps2-textures-downloader"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "conpty",
  "regex",
  "serde",
  "serde_json",
@@ -4601,6 +4611,15 @@ dependencies = [
  "raw-window-handle",
  "windows-sys 0.59.0",
  "windows-version",
+]
+
+[[package]]
+name = "windows"
+version = "0.44.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e745dab35a0c4c77aa3ce42d595e13d2003d6902d6b08c9ef5fc326d08da12b"
+dependencies = [
+ "windows-targets 0.42.2",
 ]
 
 [[package]]

@@ -6,10 +6,7 @@ import DirectoryPicker from "./components/DirectoryPicker";
 import InstallButton from "./components/InstallButton";
 import ProgressDisplay from "./components/ProgressDisplay";
 import ExistingFolderDialog from "./components/ExistingFolderDialog";
-
-// Config values - these match the Rust config
-const SLUS_FOLDER = "SLUS-21214";
-const REPO_NAME = "ncaa-next-26";
+import { TARGET_FOLDER } from "./config";
 
 interface ProgressPayload {
   stage: string;
@@ -163,17 +160,6 @@ function App() {
             disabled={isInstalling}
           />
 
-          <div className="mt-4 text-sm text-zinc-400 space-y-1">
-            <p>
-              <span className="text-zinc-500">Target folder:</span>{" "}
-              <span className="text-zinc-300">{SLUS_FOLDER}</span>
-            </p>
-            <p>
-              <span className="text-zinc-500">Repository:</span>{" "}
-              <span className="text-zinc-300">{REPO_NAME}</span>
-            </p>
-          </div>
-
           <InstallButton
             onClick={handleStartInstall}
             disabled={!texturesDir || isInstalling || gitAvailable === false}
@@ -197,28 +183,12 @@ function App() {
             />
           )}
         </section>
-
-        {/* Phase 2 Preview Section */}
-        <section className="bg-zinc-800/50 rounded-lg p-5 border border-zinc-700/50 opacity-60">
-          <h2 className="text-lg font-semibold text-zinc-400 mb-4 uppercase tracking-wide">
-            Phase 2 Preview (Coming Soon)
-          </h2>
-          <button
-            disabled
-            className="w-full py-3 px-4 bg-zinc-700 text-zinc-500 rounded-lg cursor-not-allowed"
-          >
-            Run Sync
-          </button>
-          <p className="mt-2 text-xs text-zinc-500">
-            Keep your textures up to date with the latest changes
-          </p>
-        </section>
       </div>
 
       {/* Existing folder dialog */}
       {showFolderDialog && (
         <ExistingFolderDialog
-          folderName={SLUS_FOLDER}
+          folderName={TARGET_FOLDER}
           onBackup={handleBackup}
           onDelete={handleDelete}
           onCancel={handleCancel}

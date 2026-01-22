@@ -1,14 +1,23 @@
 // Configurable constants for the PS2 Textures Downloader
 // Modify these values to adapt this app for other PS2 texture mod projects
+// Note: Also update frontend/config.ts to match these values
 
-/// Name of the texture mod repository (displayed to user)
+/// Application title (also update in tauri.conf.json and frontend/config.ts)
+#[allow(dead_code)]
+pub const APP_TITLE: &str = "NCAA NEXT Textures Downloader";
+
+/// Repository owner (GitHub username or organization)
+#[allow(dead_code)]
+pub const REPO_OWNER: &str = "ncaanext";
+
+/// Name of the texture mod repository
 #[allow(dead_code)]
 pub const REPO_NAME: &str = "ncaa-next-26";
 
 /// Full URL to the git repository
 pub const REPO_URL: &str = "https://github.com/ncaanext/ncaa-next-26.git";
 
-/// The SLUS folder name (PS2 game identifier)
+/// The target folder name (typically the PS2 game identifier like SLUS-XXXXX)
 pub const SLUS_FOLDER: &str = "SLUS-21214";
 
 /// Path within the repo to sparse checkout
