@@ -85,6 +85,14 @@ pub struct VerificationResult {
     pub has_discrepancies: bool,
 }
 
+/// Quick count check result (fast, no SHA computation)
+#[derive(Debug, Clone, Serialize)]
+pub struct QuickCheckResult {
+    pub local_count: usize,
+    pub remote_count: usize,
+    pub counts_match: bool,
+}
+
 /// File that needs to be downloaded during verification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerificationFile {
@@ -528,6 +536,60 @@ fn build_local_file_map(textures_dir: &Path) -> Result<HashMap<String, String>, 
     let mut file_map: HashMap<String, String> = HashMap::new();
     build_local_file_map_recursive(&slus_path, &slus_path, &mut file_map)?;
     Ok(file_map)
+}
+
+/// Count local files quickly (no SHA computation)
+fn count_local_files(textures_dir: &Path) -> Result<usize, String> {
+    let slus_path = textures_dir.join(SLUS_FOLDER);
+    if !slus_path.exists() {
+        return Err(format!("{} folder not found", SLUS_FOLDER));
+    }
+
+    let mut count = 0;
+    count_local_files_recursive(&slus_path, &slus_path, &mut count)?;
+    Ok(count)
+}
+
+fn count_local_files_recursive(
+    base_path: &Path,
+    current_path: &Path,
+    count: &mut usize,
+) -> Result<(), String> {
+    let entries = fs::read_dir(current_path)
+        .map_err(|e| format!("Failed to read directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+
+        // Skip hidden files
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if name.starts_with('.') {
+                continue;
+            }
+        }
+
+        if path.is_dir() {
+            count_local_files_recursive(base_path, &path, count)?;
+        } else if path.is_file() {
+            let relative_path = path
+                .strip_prefix(base_path)
+                .map_err(|e| format!("Failed to get relative path: {}", e))?
+                .to_string_lossy()
+                .to_string();
+
+            let relative_path = relative_path.replace('\\', "/");
+
+            // Skip user-customs
+            if should_skip_path(&relative_path) {
+                continue;
+            }
+
+            *count += 1;
+        }
+    }
+
+    Ok(())
 }
 
 fn build_local_file_map_recursive(
@@ -1320,4 +1382,28 @@ pub struct SyncStatusResult {
     pub latest_commit_date: String,
     pub last_sync_commit: Option<String>,
     pub has_changes: bool,
+}
+
+/// Quick count check - compares file counts without computing SHA hashes
+#[tauri::command]
+pub async fn run_quick_count_check(
+    textures_dir: String,
+    github_token: Option<String>,
+) -> Result<QuickCheckResult, String> {
+    let textures_path = PathBuf::from(&textures_dir);
+
+    // Count local files (fast, no SHA)
+    let local_count = count_local_files(&textures_path)?;
+
+    // Fetch remote tree and count (excluding user-customs)
+    let (remote_files, _) = fetch_github_tree(&github_token).await?;
+    let remote_count = remote_files.keys().filter(|p| !should_skip_path(p)).count();
+
+    let counts_match = local_count == remote_count;
+
+    Ok(QuickCheckResult {
+        local_count,
+        remote_count,
+        counts_match,
+    })
 }

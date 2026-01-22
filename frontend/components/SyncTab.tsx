@@ -37,7 +37,13 @@ interface SyncProgressPayload {
   total: number | null;
 }
 
-type SyncStatus = "idle" | "checking" | "syncing" | "complete" | "error";
+interface QuickCheckResult {
+  local_count: number;
+  remote_count: number;
+  counts_match: boolean;
+}
+
+type SyncStatus = "idle" | "checking" | "syncing" | "verifying" | "complete" | "error";
 type SyncMode = "incremental" | "full";
 
 interface SyncTabProps {
@@ -85,10 +91,11 @@ function SyncTab({
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
   const [showVerificationDialog, setShowVerificationDialog] = useState(false);
   const [isApplyingFixes, setIsApplyingFixes] = useState(false);
-  const [pendingSyncResult, setPendingSyncResult] = useState<SyncResult | null>(null);
   const [showOutput, setShowOutput] = useState(false);
   const [tokenSectionExpanded, setTokenSectionExpanded] = useState(!githubToken);
   const [showTokenRequired, setShowTokenRequired] = useState(false);
+  const [quickCheckResult, setQuickCheckResult] = useState<QuickCheckResult | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   // Listen for sync progress events
   useEffect(() => {
@@ -167,10 +174,38 @@ function SyncTab({
         fullSync: syncMode === "full",
       });
 
-      // Store the sync result temporarily
-      setPendingSyncResult(result);
+      // Run quick count check (fast, no SHA computation)
+      const quickCheck = await invoke<QuickCheckResult>("run_quick_count_check", {
+        texturesDir,
+        githubToken,
+      });
 
-      // Run verification scan
+      setQuickCheckResult(quickCheck);
+      setSyncResult(result);
+      onSyncComplete(result.new_commit_sha);
+      setSyncStatus("complete");
+      await checkSyncStatus(result.new_commit_sha);
+    } catch (e) {
+      setErrorMessage(`Sync failed: ${e}`);
+      setSyncStatus("error");
+    }
+  };
+
+  const handleRunVerification = async () => {
+    if (!githubToken) {
+      setShowTokenRequired(true);
+      setTokenSectionExpanded(true);
+      return;
+    }
+
+    setIsVerifying(true);
+    setSyncStatus("verifying");
+    setProgressMessages([]);
+    setVerificationResult(null);
+    setErrorMessage(null);
+    setShowOutput(true);
+
+    try {
       const verification = await invoke<VerificationResult>("run_verification_scan", {
         texturesDir,
         githubToken,
@@ -179,23 +214,20 @@ function SyncTab({
       setVerificationResult(verification);
 
       if (verification.has_discrepancies) {
-        // Show confirmation dialog
         setShowVerificationDialog(true);
       } else {
-        // No discrepancies - complete the sync
-        setSyncResult(result);
-        onSyncComplete(result.new_commit_sha);
         setSyncStatus("complete");
-        await checkSyncStatus(result.new_commit_sha);
       }
     } catch (e) {
-      setErrorMessage(`Sync failed: ${e}`);
+      setErrorMessage(`Verification failed: ${e}`);
       setSyncStatus("error");
+    } finally {
+      setIsVerifying(false);
     }
   };
 
   const handleVerificationConfirm = async () => {
-    if (!verificationResult || !pendingSyncResult) return;
+    if (!verificationResult) return;
 
     setIsApplyingFixes(true);
     try {
@@ -206,41 +238,35 @@ function SyncTab({
         githubToken,
       });
 
-      // Update the sync result with verification fixes
-      const finalResult: SyncResult = {
-        ...pendingSyncResult,
-        files_downloaded: pendingSyncResult.files_downloaded + downloaded,
-        files_deleted: pendingSyncResult.files_deleted + deleted,
-      };
-
-      setSyncResult(finalResult);
-      onSyncComplete(finalResult.new_commit_sha);
+      // Show verification fix results
+      setSyncResult({
+        files_downloaded: downloaded,
+        files_deleted: deleted,
+        files_renamed: 0,
+        files_skipped: 0,
+        new_commit_sha: "",
+      });
       setShowVerificationDialog(false);
       setSyncStatus("complete");
-      await checkSyncStatus(finalResult.new_commit_sha);
+      // Re-run quick count check after fixes
+      const quickCheck = await invoke<QuickCheckResult>("run_quick_count_check", {
+        texturesDir,
+        githubToken,
+      });
+      setQuickCheckResult(quickCheck);
     } catch (e) {
       setErrorMessage(`Failed to apply verification fixes: ${e}`);
       setSyncStatus("error");
       setShowVerificationDialog(false);
     } finally {
       setIsApplyingFixes(false);
-      setPendingSyncResult(null);
     }
   };
 
-  const handleVerificationCancel = async () => {
-    // Skip verification fixes, just complete with sync result
-    if (pendingSyncResult) {
-      setSyncResult(pendingSyncResult);
-      onSyncComplete(pendingSyncResult.new_commit_sha);
-      setShowVerificationDialog(false);
-      setSyncStatus("complete");
-      await checkSyncStatus(pendingSyncResult.new_commit_sha);
-    } else {
-      setShowVerificationDialog(false);
-      setSyncStatus("complete");
-    }
-    setPendingSyncResult(null);
+  const handleVerificationCancel = () => {
+    // Skip verification fixes
+    setShowVerificationDialog(false);
+    setSyncStatus("idle");
   };
 
   const handleSaveToken = () => {
@@ -252,6 +278,7 @@ function SyncTab({
 
   const isSyncing = syncStatus === "syncing";
   const isChecking = syncStatus === "checking";
+  const isVerifyingStatus = syncStatus === "verifying";
 
   return (
     <div className="space-y-4">
@@ -431,16 +458,31 @@ function SyncTab({
       {/* Sync button */}
       <button
         onClick={handleRunSync}
-        disabled={!texturesDir || isSyncing || isChecking}
+        disabled={!texturesDir || isSyncing || isChecking || isVerifyingStatus}
         className={`
           w-full py-3 rounded-lg font-medium transition-all
-          ${isSyncing || isChecking
+          ${isSyncing || isChecking || isVerifyingStatus
             ? "bg-zinc-700 text-zinc-400 cursor-wait"
             : "bg-blue-600 hover:bg-blue-500 text-white"
           }
         `}
       >
         {isSyncing ? "Syncing..." : syncMode === "full" ? "Run Full Sync" : "Run Sync"}
+      </button>
+
+      {/* Verify Installation button */}
+      <button
+        onClick={handleRunVerification}
+        disabled={!texturesDir || isSyncing || isChecking || isVerifyingStatus}
+        className={`
+          w-full py-2 rounded-lg text-sm font-medium transition-all
+          ${isVerifyingStatus
+            ? "bg-zinc-700 text-zinc-400 cursor-wait"
+            : "bg-zinc-700 hover:bg-zinc-600 text-zinc-300"
+          }
+        `}
+      >
+        {isVerifyingStatus ? "Verifying..." : "Verify Installation"}
       </button>
 
       {/* Token required warning */}
@@ -470,9 +512,40 @@ function SyncTab({
       {showOutput && progressMessages.length > 0 && (
         <SyncProgress
           messages={progressMessages}
-          isComplete={!isSyncing && syncResult !== null}
+          isComplete={!isSyncing && !isVerifyingStatus && syncResult !== null}
           result={syncResult}
         />
+      )}
+
+      {/* Quick count check result */}
+      {quickCheckResult && !isSyncing && !isVerifyingStatus && (
+        <div className={`p-3 rounded text-sm ${
+          quickCheckResult.counts_match
+            ? "bg-green-900/30 border border-green-800 text-green-300"
+            : "bg-yellow-900/30 border border-yellow-700 text-yellow-300"
+        }`}>
+          {quickCheckResult.counts_match ? (
+            <div className="flex items-center gap-2">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>File count verified: {quickCheckResult.local_count} files match repository</span>
+            </div>
+          ) : (
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span>File count mismatch</span>
+              </div>
+              <p className="text-xs ml-6">
+                Local: {quickCheckResult.local_count} files, Repository: {quickCheckResult.remote_count} files.
+                Consider running "Verify Installation" to check for discrepancies.
+              </p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Info about sync behavior */}

@@ -10,7 +10,7 @@ use commands::{
     set_sync_disclaimer_acknowledged,
     // Sync
     get_latest_commit, run_sync, check_sync_status,
-    run_verification_scan, apply_verification_fixes,
+    run_verification_scan, apply_verification_fixes, run_quick_count_check,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -42,6 +42,7 @@ pub fn run() {
             check_sync_status,
             run_verification_scan,
             apply_verification_fixes,
+            run_quick_count_check,
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
