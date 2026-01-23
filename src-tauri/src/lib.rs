@@ -11,6 +11,7 @@ use commands::{
     // Sync
     get_latest_commit, run_sync, check_sync_status,
     run_verification_scan, apply_verification_fixes, run_quick_count_check,
+    analyze_full_sync, execute_analyzed_sync,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -43,6 +44,8 @@ pub fn run() {
             run_verification_scan,
             apply_verification_fixes,
             run_quick_count_check,
+            analyze_full_sync,
+            execute_analyzed_sync,
         ])
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {

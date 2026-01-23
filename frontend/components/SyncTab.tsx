@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import SyncProgress from "./SyncProgress";
+import SyncWarningDialog from "./SyncWarningDialog";
 
 interface SyncStatusResult {
   latest_commit_sha: string;
@@ -18,7 +19,6 @@ interface SyncResult {
   new_commit_sha: string;
 }
 
-
 interface SyncProgressPayload {
   stage: string;
   message: string;
@@ -30,6 +30,18 @@ interface QuickCheckResult {
   local_count: number;
   remote_count: number;
   counts_match: boolean;
+}
+
+interface SyncFile {
+  path: string;
+  to_disabled: boolean;
+}
+
+interface SyncAnalysis {
+  files_to_add: SyncFile[];
+  files_to_replace: SyncFile[];
+  files_to_delete: string[];
+  commit_sha: string;
 }
 
 type SyncStatus = "idle" | "checking" | "syncing" | "complete" | "error";
@@ -77,10 +89,12 @@ function SyncTab({
   const [syncMode, setSyncMode] = useState<SyncMode>("incremental");
   const [tokenInput, setTokenInput] = useState(githubToken || "");
   const [showToken, setShowToken] = useState(false);
-    const [showOutput, setShowOutput] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
   const [tokenSectionExpanded, setTokenSectionExpanded] = useState(!githubToken);
   const [showTokenRequired, setShowTokenRequired] = useState(false);
   const [quickCheckResult, setQuickCheckResult] = useState<QuickCheckResult | null>(null);
+  const [pendingAnalysis, setPendingAnalysis] = useState<SyncAnalysis | null>(null);
+  const [showWarningDialog, setShowWarningDialog] = useState(false);
 
   // Listen for sync progress events
   useEffect(() => {
@@ -151,34 +165,96 @@ function SyncTab({
     setShowOutput(true);
 
     try {
-      // Run the sync
-      const result = await invoke<SyncResult>("run_sync", {
-        texturesDir,
-        lastSyncCommit,
-        githubToken,
-        fullSync: syncMode === "full",
-      });
-
-      // Run quick count check (fast, no SHA computation)
-      try {
-        const quickCheck = await invoke<QuickCheckResult>("run_quick_count_check", {
+      if (syncMode === "full") {
+        // For full sync: analyze first, then warn if needed
+        const analysis = await invoke<SyncAnalysis>("analyze_full_sync", {
           texturesDir,
           githubToken,
         });
-        setQuickCheckResult(quickCheck);
-      } catch (countError) {
-        console.error("Quick count check failed:", countError);
-        // Don't fail the whole sync if count check fails
-      }
 
-      setSyncResult(result);
-      onSyncComplete(result.new_commit_sha);
-      setSyncStatus("complete");
-      await checkSyncStatus(result.new_commit_sha);
+        // Check if there are files that will be replaced or deleted
+        if (analysis.files_to_replace.length > 0 || analysis.files_to_delete.length > 0) {
+          // Show warning dialog and wait for confirmation
+          setPendingAnalysis(analysis);
+          setShowWarningDialog(true);
+          setSyncStatus("idle"); // Pause until user confirms
+          return;
+        }
+
+        // No warnings needed, proceed directly
+        await executeAnalyzedSync(analysis);
+      } else {
+        // Incremental sync - run directly
+        const result = await invoke<SyncResult>("run_sync", {
+          texturesDir,
+          lastSyncCommit,
+          githubToken,
+          fullSync: false,
+        });
+
+        await finishSync(result);
+      }
     } catch (e) {
       setErrorMessage(`Sync failed: ${e}`);
       setSyncStatus("error");
     }
+  };
+
+  const executeAnalyzedSync = async (analysis: SyncAnalysis) => {
+    setSyncStatus("syncing");
+    setShowOutput(true);
+
+    try {
+      const result = await invoke<SyncResult>("execute_analyzed_sync", {
+        texturesDir,
+        filesToAdd: analysis.files_to_add,
+        filesToReplace: analysis.files_to_replace,
+        filesToDelete: analysis.files_to_delete,
+        commitSha: analysis.commit_sha,
+        githubToken,
+      });
+
+      await finishSync(result);
+    } catch (e) {
+      setErrorMessage(`Sync failed: ${e}`);
+      setSyncStatus("error");
+    }
+  };
+
+  const finishSync = async (result: SyncResult) => {
+    // Run quick count check (fast, no SHA computation)
+    try {
+      const quickCheck = await invoke<QuickCheckResult>("run_quick_count_check", {
+        texturesDir,
+        githubToken,
+      });
+      setQuickCheckResult(quickCheck);
+    } catch (countError) {
+      console.error("Quick count check failed:", countError);
+    }
+
+    setSyncResult(result);
+    onSyncComplete(result.new_commit_sha);
+    setSyncStatus("complete");
+    await checkSyncStatus(result.new_commit_sha);
+  };
+
+  const handleWarningConfirm = async () => {
+    setShowWarningDialog(false);
+    if (pendingAnalysis) {
+      await executeAnalyzedSync(pendingAnalysis);
+      setPendingAnalysis(null);
+    }
+  };
+
+  const handleWarningCancel = () => {
+    setShowWarningDialog(false);
+    setPendingAnalysis(null);
+    setSyncStatus("idle");
+    setProgressMessages((prev) => [
+      ...prev,
+      { stage: "cancelled", message: "Sync cancelled by user.", current: null, total: null },
+    ]);
   };
 
   const handleSaveToken = () => {
@@ -443,6 +519,16 @@ function SyncTab({
           <li>Renamed textures are moved (preserving disabled state)</li>
         </ul>
       </div>
+
+      {/* Warning dialog for files that will be replaced/deleted */}
+      {showWarningDialog && pendingAnalysis && (
+        <SyncWarningDialog
+          filesToReplace={pendingAnalysis.files_to_replace}
+          filesToDelete={pendingAnalysis.files_to_delete}
+          onConfirm={handleWarningConfirm}
+          onCancel={handleWarningCancel}
+        />
+      )}
     </div>
   );
 }

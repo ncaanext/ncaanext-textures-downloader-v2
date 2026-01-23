@@ -100,6 +100,26 @@ pub struct VerificationFile {
     pub to_disabled: bool,
 }
 
+/// Sync analysis result - what will happen if sync proceeds
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncAnalysis {
+    /// Files that don't exist locally (will be added)
+    pub files_to_add: Vec<SyncFile>,
+    /// Files that exist locally but have different content (will be replaced)
+    pub files_to_replace: Vec<SyncFile>,
+    /// Files that exist locally but not in remote (will be deleted)
+    pub files_to_delete: Vec<String>,
+    /// Latest commit SHA
+    pub commit_sha: String,
+}
+
+/// File info for sync operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncFile {
+    pub path: String,
+    pub to_disabled: bool,
+}
+
 /// Check if content is likely a text file (no null bytes in first 8KB)
 fn is_text_content(content: &[u8]) -> bool {
     let check_len = content.len().min(8192);
@@ -1447,5 +1467,243 @@ pub async fn run_quick_count_check(
         local_count,
         remote_count,
         counts_match,
+    })
+}
+
+/// Analyze what a full sync would do (without actually performing it)
+#[tauri::command]
+pub async fn analyze_full_sync(
+    textures_dir: String,
+    github_token: Option<String>,
+    window: Window,
+) -> Result<SyncAnalysis, String> {
+    let textures_path = PathBuf::from(&textures_dir);
+    let slus_path = textures_path.join(SLUS_FOLDER);
+
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "fetching".to_string(),
+        message: "Fetching repository tree (this may take a while)...".to_string(),
+        current: None,
+        total: None,
+    });
+
+    // Fetch GitHub tree
+    let (remote_files, commit_sha) = fetch_github_tree(&github_token).await?;
+    let remote_count = remote_files.keys().filter(|p| !should_skip_path(p)).count();
+
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "scanning".to_string(),
+        message: format!("Found {} files in repository", remote_count),
+        current: None,
+        total: None,
+    });
+
+    // Build local file map
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "scanning".to_string(),
+        message: "Scanning local files...".to_string(),
+        current: None,
+        total: None,
+    });
+
+    let local_files = build_local_file_map(&textures_path)?;
+
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "scanning".to_string(),
+        message: format!("Found {} local files (excluding user-customs)...", local_files.len()),
+        current: None,
+        total: None,
+    });
+
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "comparing".to_string(),
+        message: "Comparing file hashes (this may take a few minutes)...".to_string(),
+        current: None,
+        total: None,
+    });
+
+    // Categorize files
+    let mut files_to_add: Vec<SyncFile> = Vec::new();
+    let mut files_to_replace: Vec<SyncFile> = Vec::new();
+    let total_to_compare = remote_files.len();
+    let mut compared = 0;
+
+    for (path, remote_sha) in &remote_files {
+        compared += 1;
+        if compared % 1000 == 0 {
+            let percent = (compared * 100) / total_to_compare;
+            let _ = window.emit("sync-progress", SyncProgressPayload {
+                stage: "comparing".to_string(),
+                message: format!("Comparing file hashes ({}/{}) {}%...", compared, total_to_compare, percent),
+                current: Some(compared as u32),
+                total: Some(total_to_compare as u32),
+            });
+        }
+
+        if should_skip_path(path) {
+            continue;
+        }
+
+        // Check normal path
+        if local_files.contains_key(path) {
+            let local_path = slus_path.join(path);
+            if let Ok(local_sha) = compute_git_blob_sha_with_normalization(&local_path, Some(remote_sha)) {
+                if &local_sha == remote_sha {
+                    continue; // Up to date
+                }
+            }
+            // File exists but different - will be REPLACED
+            files_to_replace.push(SyncFile { path: path.clone(), to_disabled: false });
+            continue;
+        }
+
+        // Check disabled version
+        let disabled_path = get_disabled_path(path);
+        if local_files.contains_key(&disabled_path) {
+            let local_path = slus_path.join(&disabled_path);
+            if let Ok(local_sha) = compute_git_blob_sha_with_normalization(&local_path, Some(remote_sha)) {
+                if &local_sha == remote_sha {
+                    continue; // Up to date (disabled)
+                }
+            }
+            // Disabled file exists but different - will be REPLACED
+            files_to_replace.push(SyncFile { path: path.clone(), to_disabled: true });
+            continue;
+        }
+
+        // File doesn't exist locally - will be ADDED
+        files_to_add.push(SyncFile { path: path.clone(), to_disabled: false });
+    }
+
+    // Determine files to delete
+    let mut files_to_delete: Vec<String> = Vec::new();
+
+    for local_path in local_files.keys() {
+        if should_skip_path(local_path) {
+            continue;
+        }
+
+        if remote_files.contains_key(local_path) {
+            continue;
+        }
+
+        if is_disabled_filename(get_filename(local_path)) {
+            if let Some(enabled_path) = get_enabled_path(local_path) {
+                if remote_files.contains_key(&enabled_path) {
+                    continue;
+                }
+            }
+        }
+
+        files_to_delete.push(local_path.clone());
+    }
+
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "analysis_complete".to_string(),
+        message: format!(
+            "Analysis complete: {} new, {} to replace, {} to delete",
+            files_to_add.len(), files_to_replace.len(), files_to_delete.len()
+        ),
+        current: None,
+        total: None,
+    });
+
+    Ok(SyncAnalysis {
+        files_to_add,
+        files_to_replace,
+        files_to_delete,
+        commit_sha,
+    })
+}
+
+/// Execute sync with pre-analyzed file lists (skips analysis phase)
+#[tauri::command]
+pub async fn execute_analyzed_sync(
+    textures_dir: String,
+    files_to_add: Vec<SyncFile>,
+    files_to_replace: Vec<SyncFile>,
+    files_to_delete: Vec<String>,
+    commit_sha: String,
+    github_token: Option<String>,
+    window: Window,
+) -> Result<SyncResult, String> {
+    let textures_path = PathBuf::from(&textures_dir);
+    let slus_path = textures_path.join(SLUS_FOLDER);
+
+    // Combine add and replace into single download list
+    let mut files_to_download: Vec<SyncFile> = Vec::new();
+    files_to_download.extend(files_to_add);
+    files_to_download.extend(files_to_replace);
+
+    let download_count = files_to_download.len() as u32;
+    let delete_count = files_to_delete.len() as u32;
+
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "syncing".to_string(),
+        message: format!("Starting sync: {} to download, {} to delete", download_count, delete_count),
+        current: None,
+        total: None,
+    });
+
+    // Download files
+    let client = Client::new();
+    let mut downloaded: u32 = 0;
+
+    for (i, file) in files_to_download.iter().enumerate() {
+        let _ = window.emit("sync-progress", SyncProgressPayload {
+            stage: "downloading".to_string(),
+            message: format!("Downloading: {}", file.path),
+            current: Some(i as u32 + 1),
+            total: Some(download_count),
+        });
+
+        let dest_path = if file.to_disabled {
+            slus_path.join(get_disabled_path(&file.path))
+        } else {
+            slus_path.join(&file.path)
+        };
+
+        download_file(&client, &file.path, &dest_path, &github_token).await?;
+        downloaded += 1;
+    }
+
+    // Delete files
+    let mut deleted: u32 = 0;
+
+    for (i, path) in files_to_delete.iter().enumerate() {
+        let _ = window.emit("sync-progress", SyncProgressPayload {
+            stage: "deleting".to_string(),
+            message: format!("Deleting: {}", path),
+            current: Some(i as u32 + 1),
+            total: Some(delete_count),
+        });
+
+        let file_path = slus_path.join(path);
+        if file_path.exists() {
+            fs::remove_file(&file_path)
+                .map_err(|e| format!("Failed to delete {}: {}", path, e))?;
+            deleted += 1;
+        }
+    }
+
+    // Cleanup empty directories
+    cleanup_empty_directories(&slus_path)?;
+
+    let _ = window.emit("sync-progress", SyncProgressPayload {
+        stage: "complete".to_string(),
+        message: format!(
+            "Sync complete! Downloaded: {}, Deleted: {}",
+            downloaded, deleted
+        ),
+        current: None,
+        total: None,
+    });
+
+    Ok(SyncResult {
+        files_downloaded: downloaded,
+        files_deleted: deleted,
+        files_renamed: 0,
+        files_skipped: 0,
+        new_commit_sha: commit_sha,
     })
 }
