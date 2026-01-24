@@ -4,30 +4,29 @@ This is a companion app for the [NCAA NEXT](https://www.ncaanext.com) mod that i
 
 ## Table of Contents
 - [Features](#features)
-  - [Mod Installer](#mod-installer)
-  - [Mod Updater](#mod-updater)
-  - [Post-Sync Verification](#post-sync-verification)
-- [Handling User-Custom Textures](#handling-user-custom-textures)
+  - [Mod Installer](#introduction--installer)
+  - [Mod Updater](#introduction--updater)
+  - [Post-Sync Verification](#introduction--verification)
+- [Handling User-Custom Textures](#custom-textures)
 - [Installation](#installation)
-  - [Windows](#windows)
-  - [macOS](#macos)
-- [Using the App](#using-the-app)
-  - [Initial Configuration](#initial-configuration)
-  - [First Time Setup](#first-time-setup)
-  - [Updating and Syncing](#updating-and-syncing)
+  - [Windows](#installation--windows)
+  - [macOS](#installation--macos)
+- [Using the App](#usage)
+  - [First Time Setup](#usage--setup)
+  - [Updating and Syncing](#usage--sync)
 - [License](#license)
 
 ---
 
-## Features
+## Features <a name="features">
 
 The NCAA NEXT mod requires a massive folder of replacement textures. This app helps manage the installation and upkeep of those textures. 
 
-### Mod Installer
+### Mod Installer <a name="introduction--installer">
 
 The **First Time Setup** uses Git sparse checkout to efficiently download only the texture files you need (not the entire repository). This is faster and more reliable than downloading a massive zip file, which can fail or become corrupted. The installer automatically places textures in the correct location within your emulator's textures folder.
 
-### Mod Updater
+### Mod Updater <a name="introduction--updater">
 
 The **Sync** feature keeps your textures up-to-date with two modes:
 
@@ -42,13 +41,13 @@ Both modes will:
 - Preserve your disabled textures (dash-prefixed files)
 - Never touch your `user-customs` folder
 
-### Post-Sync Verification
+### Post-Sync Verification <a name="introduction--verification">
 
 After every sync, the app performs a quick file count verification to ensure your local installation matches the repository. If a mismatch is detected, you'll be prompted to run a Full Sync to resolve discrepancies.
 
 ---
 
-## Handling User-Custom Textures
+## Handling User-Custom Textures <a name="custom-textures">
 
 This app is designed with texture customization in mind:
 
@@ -69,31 +68,49 @@ The dash prefix "disables" the texture - the emulator ignores it, but the app st
 
 ---
 
-## Installation
+## Installation <a name="installation"></a>
 
-### Windows
+### Windows <a name="installation--windows"></a>
 
 1. Download the Windows installer from the [latest release](../../releases/latest)
 2. Run the installer and follow the prompts
 3. Launch the app from your Start menu
 
 
-### macOS
+### macOS <a name="installation--macos"></a>
 
 1. Download the Mac installer file from the [latest release](../../releases/latest)
 2. Open the DMG and drag the app to your Applications folder
 3. On first launch, right-click the app and select "Open" to bypass Gatekeeper. In some cases you might need to go to Setting > Privacy & Security, scroll down, and allow the app to run in the Security settings section.
 
-**Requirements**: Git must be installed. If you don't have it, install Xcode Command Line Tools by running in Terminal:
+---
+
+## Using the App <a name="usage"></a>
+
+### First Time Textures Installation <a name="usage--setup">
+
+1. Select the **Install** tab
+2. Browse to your PCSX2 textures folder. You can find the exact path in PCSX2 (or AetherSX2) at Settings > Graphics > Texture Replacements.
+3. Click **Start Installation**
+4. Wait for the download to complete (this may take a while for large texture packs)
+
+The installer uses Git sparse checkout to efficiently download only the texture files. Progress is displayed in real-time. 
+
+**Requirements for Mac Users Only**: Git must be installed. If you don't have it, install Xcode Command Line Tools by running in Terminal:
 ```bash
 xcode-select --install
 ```
 
----
+### Updating and Syncing <a name="usage--sync">
 
-## Using the App
+1. Select the **Sync** tab
+2. Ensure your GitHub API Token is configured (instructions below)
+3. Choose your sync mode:
+   - **Download New Content**: Fast, only downloads changes since last sync (recommended for regular use)
+   - **Full Sync**: Compares all files, slower but thorough (use occasionally or when troubleshooting)
+4. Click **Run Sync**
 
-### Initial Configuration
+**Warning Dialogs**: When running a Full Sync, if files will be replaced or deleted, you'll see a warning dialog listing the affected files. This gives you a chance to back up any custom textures to the `user-customs` folder before proceeding.
 
 #### GitHub API Token (Required for Sync)
 
@@ -106,38 +123,9 @@ A GitHub Personal Access Token is required for the sync features. Here's how to 
 5. Click "Generate Token" and copy it
 
 Paste the token into the app's GitHub API Token field and click Save.
-
-#### Textures Directory
-
-Point the app to your emulator's `textures` folder. For PCSX2, this is typically:
-- **Windows**: `C:\PCSX2\textures`
-- **macOS**: `~/Library/Application Support/AetherSX2/textures`
-
-You can find the exact path in PCSX2 (or AetherSX2) at Settings > Graphics > Texture Replacements.
-
-### First Time Setup
-
-1. Select the **Install** tab
-2. Browse to your PCSX2 textures folder
-3. Click **Start Installation**
-4. Wait for the download to complete (this may take a while for large texture packs)
-
-The installer uses Git sparse checkout to efficiently download only the texture files. Progress is displayed in real-time.
-
-### Updating and Syncing
-
-1. Select the **Sync** tab
-2. Ensure your GitHub API Token is configured
-3. Choose your sync mode:
-   - **Download New Content**: Fast, only downloads changes since last sync (recommended for regular use)
-   - **Full Sync**: Compares all files, slower but thorough (use occasionally or when troubleshooting)
-4. Click **Run Sync**
-
-**Warning Dialogs**: When running a Full Sync, if files will be replaced or deleted, you'll see a warning dialog listing the affected files. This gives you a chance to back up any custom textures to the `user-customs` folder before proceeding.
-
 ---
 
-## License
+## License <a name="license">
 
 PS2 Textures Downloader © 2024-2026 by JD6-37 is licensed under [CC BY-NC 4.0](http://creativecommons.org/licenses/by-nc/4.0/)
 
