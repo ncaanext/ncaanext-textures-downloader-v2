@@ -6,7 +6,7 @@ authors = ["NCAA NEXT"]
 edition = "2021"
 
 [lib]
-name = "ncaanext_textures_downloader_lib"
+name = "ps2_textures_downloader_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
