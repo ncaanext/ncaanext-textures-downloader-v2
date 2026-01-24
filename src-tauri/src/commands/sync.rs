@@ -920,7 +920,7 @@ async fn run_full_sync(
     // Build local file map
     let _ = window.emit("sync-progress", SyncProgressPayload {
         stage: "scanning".to_string(),
-        message: "Scanning local files...".to_string(),
+        message: "Scanning local files (this may take a few minutes)...".to_string(),
         current: None,
         total: None,
     });
@@ -936,7 +936,7 @@ async fn run_full_sync(
 
     let _ = window.emit("sync-progress", SyncProgressPayload {
         stage: "comparing".to_string(),
-        message: "Comparing file hashes (this may take a few minutes)...".to_string(),
+        message: "Comparing file hashes...".to_string(),
         current: None,
         total: None,
     });
@@ -1501,7 +1501,7 @@ pub async fn analyze_full_sync(
     // Build local file map
     let _ = window.emit("sync-progress", SyncProgressPayload {
         stage: "scanning".to_string(),
-        message: "Scanning local files...".to_string(),
+        message: "Scanning local files (this may take a few minutes)...".to_string(),
         current: None,
         total: None,
     });
@@ -1517,7 +1517,7 @@ pub async fn analyze_full_sync(
 
     let _ = window.emit("sync-progress", SyncProgressPayload {
         stage: "comparing".to_string(),
-        message: "Comparing file hashes (this may take a few minutes)...".to_string(),
+        message: "Comparing file hashes...".to_string(),
         current: None,
         total: None,
     });
