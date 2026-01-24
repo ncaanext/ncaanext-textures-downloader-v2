@@ -1010,6 +1010,13 @@ async fn run_full_sync(
         // If this looks like a disabled file (dash prefix), check if enabled version exists
         if is_disabled_filename(get_filename(local_path)) {
             if let Some(enabled_path) = get_enabled_path(local_path) {
+                // If enabled version exists LOCALLY, delete the disabled version
+                // (having both doesn't make sense - enabled takes precedence)
+                if local_files.contains_key(&enabled_path) {
+                    files_to_delete.push(local_path.clone());
+                    continue;
+                }
+                // If enabled version exists in remote (but not locally), keep disabled version
                 if remote_files.contains_key(&enabled_path) {
                     continue; // This is a user-disabled version of a repo file
                 }
@@ -1589,6 +1596,13 @@ pub async fn analyze_full_sync(
 
         if is_disabled_filename(get_filename(local_path)) {
             if let Some(enabled_path) = get_enabled_path(local_path) {
+                // If enabled version exists LOCALLY, delete the disabled version
+                // (having both doesn't make sense - enabled takes precedence)
+                if local_files.contains_key(&enabled_path) {
+                    files_to_delete.push(local_path.clone());
+                    continue;
+                }
+                // If enabled version exists in remote (but not locally), keep disabled version
                 if remote_files.contains_key(&enabled_path) {
                     continue;
                 }
