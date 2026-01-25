@@ -75,16 +75,15 @@ The dash prefix "disables" the texture - the emulator ignores it, but the app st
 ### Windows
 
 1. Download `windows-portable.zip` from the [latest release](../../releases/latest)
-2. Create a folder on your computer where you want to keep the app (e.g., `C:\Apps\TexturesDownloader\`)
-3. Extract the contents of the zip file into that folder
-4. Run the `.exe` file to launch the app
+2. Extract the zip file somewhere on your computer (e.g., `C:\Apps\` or your Desktop)
+3. Open the extracted folder and run the `.exe` file to launch the app
 
 **Note**: The app includes a bundled copy of Git (MinGit), so you don't need to install Git separately.
 
 #### Updating the App (Windows)
 
 1. Download the new `windows-portable.zip` from the latest release
-2. Extract and overwrite the existing `.exe` file and `resources` folder in your app folder
+2. Extract and replace the existing app folder
 3. Your settings (including GitHub API token) are stored separately and will be preserved
 
 ### macOS
