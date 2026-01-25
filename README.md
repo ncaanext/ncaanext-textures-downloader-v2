@@ -4,31 +4,30 @@ A cross-platform desktop app for PS2 mod projects that helps users download and 
 
 ## Table of Contents
 - [Features](#features)
-  - [Mod Installer](#mod-installer)
-  - [Mod Updater](#mod-updater)
-  - [Post-Sync Verification](#post-sync-verification)
-- [Handling User-Custom Textures](#handling-user-custom-textures)
+  - [Mod Installer](#introduction--installer)
+  - [Mod Updater](#introduction--updater)
+  - [Post-Sync Verification](#introduction--verification)
+- [Handling User-Custom Textures](#custom-textures)
 - [Installation](#installation)
-  - [Windows](#windows)
-  - [macOS](#macos)
-- [Using the App](#using-the-app)
-  - [Initial Configuration](#initial-configuration)
-  - [First Time Setup](#first-time-setup)
-  - [Updating and Syncing](#updating-and-syncing)
-- [For Mod Teams: Customizing for Your Project](#for-mod-teams-customizing-for-your-project)
+  - [Windows](#installation--windows)
+  - [macOS](#installation--macos)
+- [Using the App](#usage)
+  - [First Time Setup](#usage--setup)
+  - [Updating and Syncing](#usage--sync)
+- [For Mod Teams: Customizing for Your Project](#for-mod-teams)
 - [License](#license)
 
 ---
 
-## Features
+## Features <a name="features">
 
 For users of a PS2 mod that requires a massive folder of replacement textures, downloading multi-GB zip files and keeping things updated can be tedious. This app provides:
 
-### Mod Installer
+### Mod Installer <a name="introduction--installer">
 
 The **First Time Setup** uses Git sparse checkout to efficiently download only the texture files you need (not the entire repository). This is faster and more reliable than downloading a massive zip file, which can fail or become corrupted. The installer automatically places textures in the correct location within your emulator's textures folder.
 
-### Mod Updater
+### Mod Updater <a name="introduction--updater">
 
 The **Sync** feature keeps your textures up-to-date with two modes:
 
@@ -43,13 +42,13 @@ Both modes will:
 - Preserve your disabled textures (dash-prefixed files)
 - Never touch your `user-customs` folder
 
-### Post-Sync Verification
+### Post-Sync Verification <a name="introduction--verification">
 
 After every sync, the app performs a quick file count verification to ensure your local installation matches the repository. If a mismatch is detected, you'll be prompted to run a Full Sync to resolve discrepancies.
 
 ---
 
-## Handling User-Custom Textures
+## Handling User-Custom Textures <a name="custom-textures">
 
 This app is designed with texture customization in mind:
 
@@ -70,9 +69,9 @@ The dash prefix "disables" the texture - the emulator ignores it, but the app st
 
 ---
 
-## Installation
+## Installation <a name="installation"></a>
 
-### Windows
+### Windows <a name="installation--windows"></a>
 
 1. Download `windows-portable.zip` from the [latest release](../../releases/latest)
 2. Extract the zip file somewhere on your computer (e.g., `C:\Apps\` or your Desktop)
@@ -86,7 +85,7 @@ The dash prefix "disables" the texture - the emulator ignores it, but the app st
 2. Extract and replace the existing app folder
 3. Your settings (including GitHub API token) are stored separately and will be preserved
 
-### macOS
+### macOS <a name="installation--macos"></a>
 
 1. Download the Mac installer file from the [latest release](../../releases/latest)
 2. Open the DMG and drag the app to your Applications folder
@@ -103,9 +102,32 @@ Simply download the new `.dmg` and drag the app to your Applications folder, rep
 
 ---
 
-## Using the App
+## Using the App <a name="usage"></a>
 
-### Initial Configuration
+### First Time Textures Installation <a name="usage--setup">
+
+1. Select the **Install** tab
+2. Browse to your PCSX2 textures folder. You can find the exact path in PCSX2 (or AetherSX2) at Settings > Graphics > Texture Replacements.
+3. Click **Start Installation**
+4. Wait for the download to complete (this may take a while for large texture packs)
+
+The installer uses Git sparse checkout to efficiently download only the texture files. Progress is displayed in real-time. 
+
+**Requirements for Mac Users Only**: Git must be installed. If you don't have it, install Xcode Command Line Tools by running in Terminal:
+```bash
+xcode-select --install
+```
+
+### Updating and Syncing <a name="usage--sync">
+
+1. Select the **Sync** tab
+2. Ensure your GitHub API Token is configured (instructions below)
+3. Choose your sync mode:
+   - **Download New Content**: Fast, only downloads changes since last sync (recommended for regular use)
+   - **Full Sync**: Compares all files, slower but thorough (use occasionally or when troubleshooting)
+4. Click **Run Sync**
+
+**Warning Dialogs**: When running a Full Sync, if files will be replaced or deleted, you'll see a warning dialog listing the affected files. This gives you a chance to back up any custom textures to the `user-customs` folder before proceeding.
 
 #### GitHub API Token (Required for Sync)
 
@@ -116,40 +138,11 @@ A GitHub Personal Access Token is required for the sync features. Here's how to 
 3. Set expiration to 1 year (maximum)
 4. **No permissions are needed** - leave everything unchecked
 5. Click "Generate Token" and copy it
-
-Paste the token into the app's GitHub API Token field and click Save.
-
-#### Textures Directory
-
-Point the app to your emulator's `textures` folder. For PCSX2, this is typically:
-- **Windows**: `C:\PCSX2\textures`
-- **macOS**: `~/Library/Application Support/AetherSX2/textures`
-
-You can find the exact path in PCSX2 (or AetherSX2) at Settings > Graphics > Texture Replacements.
-
-### First Time Setup
-
-1. Select the **Install** tab
-2. Browse to your PCSX2 textures folder
-3. Click **Start Installation**
-4. Wait for the download to complete (this may take a while for large texture packs)
-
-The installer uses Git sparse checkout to efficiently download only the texture files. Progress is displayed in real-time.
-
-### Updating and Syncing
-
-1. Select the **Sync** tab
-2. Ensure your GitHub API Token is configured
-3. Choose your sync mode:
-   - **Download New Content**: Fast, only downloads changes since last sync (recommended for regular use)
-   - **Full Sync**: Compares all files, slower but thorough (use occasionally or when troubleshooting)
-4. Click **Run Sync**
-
-**Warning Dialogs**: When running a Full Sync, if files will be replaced or deleted, you'll see a warning dialog listing the affected files. This gives you a chance to back up any custom textures to the `user-customs` folder before proceeding.
+6. Paste the token into the app's GitHub API Token field and click Save.
 
 ---
 
-## For Mod Teams: Customizing for Your Project
+## For Mod Teams: Customizing for Your Project <a name="for-mod-teams"></a>
 
 This app is open-source and can be customized for any PS2 texture replacement mod. Fork the repository and modify the configuration files for your project before building your apps.
 
@@ -213,12 +206,33 @@ Your texture repository should be structured as follows:
 
 ```
 your-repo/
+└── installer-data.json
 └── textures/
     └── SLUS-XXXXX/
         └── replacements/
             ├── user-customs/     <- Users put custom textures here (never modified by sync)
             └── ...
 ```
+
+### User-Customs Folder
+
+Ensure your repository has a `user-customs` folder in the replacements directory. This folder should exist (can contain a `.gitkeep` file if there are no other files in it) so users have a designated safe space for their custom textures.
+
+### Installer JSON file
+
+Ensure your repository has a file called `installer-data.json` at the root of the repo. It should contain the following:
+
+```json
+{
+  "release_url": "https://github.com/myteam/my-project",
+  "total_size": 22.5,
+  "min_downloader_app_version": 0.25,
+  "downloader_app_url": "http://textures.myproject.com"
+}
+```
+The `total_size` is the approximate size of your textures folder in GB. This is used to inform the user about the required disk space before initial installation.
+
+The `min_downloader_app_version` is checked when the app runs. If the app's version is lower than the required version, it will block the user from using the app and prompt them to download the latest version from the `downloader_app_url` URL. This is useful for restricting use of outdated and/or bugged versions of the app.
 
 ### Building the App
 
@@ -251,17 +265,17 @@ Build artifacts are attached to each workflow run and can be downloaded from the
 The Windows portable build requires MinGit to be manually bundled due to a Tauri resource bundling limitation. After each build:
 
 1. **Download build artifacts** from GitHub Actions:
-   - Download `windows-portable` artifact (contains the `.exe` and `resources` folder)
+   - Download `windows-portable` artifact (contains the `.exe` and `resources` folder) from your repo's Github workflow (the Actions tab)
 
-2. **Download MinGit**:
-   - Get MinGit from [git-for-windows/git releases](https://github.com/git-for-windows/git/releases)
-   - Download the file named `MinGit-X.XX.X-64-bit.zip` (64-bit version)
+2. Create a folder that will become the root of the new windows-portable zip (Eg. My Project Textures Downloader)
 
-3. **Extract and add MinGit**:
-   - Extract the MinGit zip - it contains folders like `cmd/`, `etc/`, `mingw64/`, `usr/`
-   - Create the folder structure: `resources/mingit/x64/`
-   - Copy all MinGit contents into `resources/mingit/x64/` so you have:
+3. Put the `.exe` and `resources` folder into the folder
+
+4. **Add MinGit**:
+   - Copy the mingit folder from this project's `src-tauri` folder (or get MinGit from [git-for-windows/git releases](https://github.com/git-for-windows/git/releases))
+   - Paste it into the `resources` folder so you have:
      ```
+     myproject-textures-downloader.exe
      resources/
      ├── icon.ico
      └── mingit/
@@ -274,16 +288,12 @@ The Windows portable build requires MinGit to be manually bundled due to a Tauri
              └── LICENSE.txt
      ```
 
-4. **Create the release zip**:
-   - Zip the `.exe` file and `resources` folder together
+5. **Create the release zip**:
+   - Zip the folder you created in step 2
    - Name it `windows-portable.zip`
    - Attach to your GitHub release
 
 **Note**: The app looks for Git at `resources/mingit/x64/cmd/git.exe`. If this path doesn't exist, users will see an error asking them to install Git manually.
-
-### User-Customs Folder
-
-Ensure your repository has a `user-customs` folder in the replacements directory. This folder should exist (can contain a `.gitkeep` file if there are no other files in it) so users have a designated safe space for their custom textures.
 
 ### Syncing Your Fork with Upstream
 
@@ -308,7 +318,7 @@ Config files are small and rarely change, so conflicts are infrequent and easy t
 
 ---
 
-## License
+## License <a name="license"></a>
 
 PS2 Textures Downloader © 2024-2026 by JD6-37 is licensed under [CC BY-NC 4.0](http://creativecommons.org/licenses/by-nc/4.0/)
 
