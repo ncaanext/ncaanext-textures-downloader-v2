@@ -38,6 +38,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Debug - Check mingit files
+        run: |
+          echo "=== Checking mingit folder ==="
+          ls -la src-tauri/mingit/ || echo "mingit folder not found"
+          ls -la src-tauri/mingit/x64/cmd/ || echo "x64/cmd folder not found"
+          du -sh src-tauri/mingit/x64/ || echo "Cannot calculate size"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
