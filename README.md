@@ -27,7 +27,7 @@ For users of a PS2 mod that requires a massive folder of replacement textures, d
 
 The **First Time Setup** uses Git sparse checkout to efficiently download only the texture files you need (not the entire repository). This is faster and more reliable than downloading a massive zip file, which can fail or become corrupted. The installer automatically places textures in the correct location within your emulator's textures folder.
 
-![Screenshot of first time install screen.](assets/screenshot-install.jpg)
+<img src="assets/screenshot-install.jpg" alt="Screenshot of first time install screen." width="400">
 
 ### Mod Updater <a name="introduction--updater">
 
@@ -44,14 +44,14 @@ Both modes will:
 - Preserve your disabled textures (dash-prefixed files)
 - Never touch your `user-customs` folder
 
-![Screenshot of post-install sync screen.](assets/screenshot-sync.jpg)
+<img src="assets/screenshot-sync.jpg" alt="Screenshot of post-install sync screen." width="400">
 
 
 ### Post-Sync Verification <a name="introduction--verification">
 
 After every sync, the app performs a quick file count verification to ensure your local installation matches the repository. If a mismatch is detected, you'll be prompted to run a Full Sync to resolve discrepancies.
 
-![Screenshot of post-sync verification.](assets/screenshot-verification.jpg)
+<img src="assets/screenshot-verification.jpg" alt="Screenshot of post-sync verification." width="400">
 
 ---
 
@@ -120,7 +120,7 @@ The installer uses Git sparse checkout to efficiently download only the texture 
 xcode-select --install
 ```
 
-![Screenshot of installation complete screen.](assets/screenshot-installdone.jpg)
+<img src="assets/screenshot-installdone.jpg" alt="Screenshot of installation complete screen." width="400">
 
 ### Updating and Syncing <a name="usage--sync">
 
@@ -131,11 +131,11 @@ xcode-select --install
    - **Full Sync**: Compares all files, slower but thorough (use occasionally or when troubleshooting)
 4. Click **Run Sync**
 
-![Screenshot of sync mode options.](assets/screenshot-syncmodes.jpg)
+<img src="assets/screenshot-syncmodes.jpg" alt="Screenshot of sync mode options." width="400">
 
 **Warning Dialogs**: When running a Full Sync, if files will be replaced or deleted, you'll see a warning dialog listing the affected files. This gives you a chance to back up any custom textures to the `user-customs` folder before proceeding.
 
-![Screenshot of file deletion warning.](assets/screenshot-warning.jpg)
+<img src="assets/screenshot-warning.jpg" alt="Screenshot of file deletion warning." width="400">
 
 #### GitHub API Token (Required for Sync)
 
@@ -148,7 +148,7 @@ A GitHub Personal Access Token is required for the sync features. Here's how to 
 5. Click "Generate Token" and copy it
 6. Paste the token into the app's GitHub API Token field and click Save.
 
-![Screenshot of github api screen.](assets/screenshot-apikey.jpg)
+<img src="assets/screenshot-apikey.jpg" alt="Screenshot of github api screen." width="400">
 
 ---
 
