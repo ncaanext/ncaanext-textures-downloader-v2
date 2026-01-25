@@ -27,6 +27,8 @@ For users of a PS2 mod that requires a massive folder of replacement textures, d
 
 The **First Time Setup** uses Git sparse checkout to efficiently download only the texture files you need (not the entire repository). This is faster and more reliable than downloading a massive zip file, which can fail or become corrupted. The installer automatically places textures in the correct location within your emulator's textures folder.
 
+![Screenshot of first time install screen.](assets/screenshot-install.jpg)
+
 ### Mod Updater <a name="introduction--updater">
 
 The **Sync** feature keeps your textures up-to-date with two modes:
@@ -42,9 +44,14 @@ Both modes will:
 - Preserve your disabled textures (dash-prefixed files)
 - Never touch your `user-customs` folder
 
+![Screenshot of post-install sync screen.](assets/screenshot-sync.jpg)
+
+
 ### Post-Sync Verification <a name="introduction--verification">
 
 After every sync, the app performs a quick file count verification to ensure your local installation matches the repository. If a mismatch is detected, you'll be prompted to run a Full Sync to resolve discrepancies.
+
+![Screenshot of post-sync verification.](assets/screenshot-verification.jpg)
 
 ---
 
@@ -113,6 +120,8 @@ The installer uses Git sparse checkout to efficiently download only the texture 
 xcode-select --install
 ```
 
+![Screenshot of installation complete screen.](assets/screenshot-installdone.jpg)
+
 ### Updating and Syncing <a name="usage--sync">
 
 1. Select the **Sync** tab
@@ -122,7 +131,11 @@ xcode-select --install
    - **Full Sync**: Compares all files, slower but thorough (use occasionally or when troubleshooting)
 4. Click **Run Sync**
 
+![Screenshot of sync mode options.](assets/screenshot-syncmodes.jpg)
+
 **Warning Dialogs**: When running a Full Sync, if files will be replaced or deleted, you'll see a warning dialog listing the affected files. This gives you a chance to back up any custom textures to the `user-customs` folder before proceeding.
+
+![Screenshot of file deletion warning.](assets/screenshot-warning.jpg)
 
 #### GitHub API Token (Required for Sync)
 
@@ -134,6 +147,8 @@ A GitHub Personal Access Token is required for the sync features. Here's how to 
 4. **No permissions are needed** - leave everything unchecked
 5. Click "Generate Token" and copy it
 6. Paste the token into the app's GitHub API Token field and click Save.
+
+![Screenshot of github api screen.](assets/screenshot-apikey.jpg)
 
 ---
 
