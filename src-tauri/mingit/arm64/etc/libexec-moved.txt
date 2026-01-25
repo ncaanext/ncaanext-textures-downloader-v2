@@ -1,9 +1,0 @@
-clangarm64/libexec/git-core/git-credential-wincred.exe
-clangarm64/libexec/git-core/git-http-fetch.exe
-clangarm64/libexec/git-core/git-http-push.exe
-clangarm64/libexec/git-core/git-remote-http.exe
-clangarm64/libexec/git-core/git-remote-https.exe
-clangarm64/libexec/git-core/git-sh-i18n--envsubst.exe
-clangarm64/libexec/git-core/git.exe
-clangarm64/libexec/git-core/headless-git.exe
-clangarm64/libexec/git-core/scalar.exe
