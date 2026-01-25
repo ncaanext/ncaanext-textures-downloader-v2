@@ -74,10 +74,18 @@ The dash prefix "disables" the texture - the emulator ignores it, but the app st
 
 ### Windows
 
-1. Download the Windows installer from the [latest release](../../releases/latest)
-2. Run the installer and follow the prompts
-3. Launch the app from your Start menu
+1. Download `windows-portable.zip` from the [latest release](../../releases/latest)
+2. Create a folder on your computer where you want to keep the app (e.g., `C:\Apps\TexturesDownloader\`)
+3. Extract the contents of the zip file into that folder
+4. Run the `.exe` file to launch the app
 
+**Note**: The app includes a bundled copy of Git (MinGit), so you don't need to install Git separately.
+
+#### Updating the App (Windows)
+
+1. Download the new `windows-portable.zip` from the latest release
+2. Extract and overwrite the existing `.exe` file and `resources` folder in your app folder
+3. Your settings (including GitHub API token) are stored separately and will be preserved
 
 ### macOS
 
@@ -89,6 +97,10 @@ The dash prefix "disables" the texture - the emulator ignores it, but the app st
 ```bash
 xcode-select --install
 ```
+
+#### Updating the App (macOS)
+
+Simply download the new `.dmg` and drag the app to your Applications folder, replacing the old version. Your settings are stored in your user Library folder and will be preserved.
 
 ---
 
@@ -230,10 +242,45 @@ npm run tauri build
 ### GitHub Actions
 
 The repository includes GitHub Actions workflows for automated builds. On each push to `main`, it builds:
-- Windows: `.msi` installer (with bundled MinGit)
-- macOS: `.dmg` installer (universal binary for Intel and Apple Silicon - Git not included)
+- Windows: Portable `.exe` + `resources` folder
+- macOS: `.dmg` installer (universal binary for Intel and Apple Silicon)
 
 Build artifacts are attached to each workflow run and can be downloaded from the Actions tab.
+
+### Bundling MinGit for Windows (Required)
+
+The Windows portable build requires MinGit to be manually bundled due to a Tauri resource bundling limitation. After each build:
+
+1. **Download build artifacts** from GitHub Actions:
+   - Download `windows-portable` artifact (contains the `.exe` and `resources` folder)
+
+2. **Download MinGit**:
+   - Get MinGit from [git-for-windows/git releases](https://github.com/git-for-windows/git/releases)
+   - Download the file named `MinGit-X.XX.X-64-bit.zip` (64-bit version)
+
+3. **Extract and add MinGit**:
+   - Extract the MinGit zip - it contains folders like `cmd/`, `etc/`, `mingw64/`, `usr/`
+   - Create the folder structure: `resources/mingit/x64/`
+   - Copy all MinGit contents into `resources/mingit/x64/` so you have:
+     ```
+     resources/
+     ├── icon.ico
+     └── mingit/
+         └── x64/
+             ├── cmd/
+             │   └── git.exe    <- This is what the app looks for
+             ├── etc/
+             ├── mingw64/
+             ├── usr/
+             └── LICENSE.txt
+     ```
+
+4. **Create the release zip**:
+   - Zip the `.exe` file and `resources` folder together
+   - Name it `windows-portable.zip`
+   - Attach to your GitHub release
+
+**Note**: The app looks for Git at `resources/mingit/x64/cmd/git.exe`. If this path doesn't exist, users will see an error asking them to install Git manually.
 
 ### User-Customs Folder
 
