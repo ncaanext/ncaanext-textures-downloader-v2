@@ -25,6 +25,8 @@ pub struct InstallerData {
     /// Total size of the texture pack (e.g., "8.5 GB" or just "22.5")
     #[serde(deserialize_with = "string_or_number")]
     pub total_size: String,
+    /// URL where users can download the latest version of the app
+    pub downloader_app_url: String,
 }
 
 /// Result of fetching installer data
