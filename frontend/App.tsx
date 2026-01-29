@@ -20,6 +20,7 @@ interface AppState {
 interface InstallerData {
   min_downloader_app_version: string;
   total_size: string;
+  downloader_app_url: string;
 }
 
 interface InstallerDataResult {
@@ -269,6 +270,7 @@ function App() {
         <AppOutdatedModal
           currentVersion={appVersion}
           requiredVersion={requiredVersion}
+          downloaderAppUrl={installerData?.downloader_app_url || ""}
         />
       </div>
     );
