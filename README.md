@@ -4,7 +4,7 @@ This branch targets `ncaanext/ncaa-next-27`. The default `main` branch continues
 
 ## Build downloads
 
-Pushes and pull requests to `next27` run **Build NEXT 27**. You can also rerun it from Actions using **Run workflow** with branch `next27` selected. Download packages from the completed run's **Artifacts** section. Builds do not publish a GitHub release.
+Pushes and pull requests to `next27` run **Build NEXT 27** (desktop) and **Build NEXT 27 Android (experimental)**. You can also rerun it from Actions using **Run workflow** with branch `next27` selected. Download packages from the completed run's **Artifacts** section. Builds do not publish a GitHub release.
 
 | Platform | Artifact | Notes |
 | --- | --- | --- |

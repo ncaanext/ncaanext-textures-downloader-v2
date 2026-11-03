@@ -1,0 +1,58 @@
+name: Build NEXT 27 Android (experimental)
+
+on:
+  push:
+    branches: [next27]
+  pull_request:
+    branches: [next27]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next27-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android ARM64 (experimental APK)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      NDK_VERSION: 27.2.12479018
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android NDK
+        run: |
+          sdkmanager "ndk;$NDK_VERSION"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android-arm64
+      - run: npm ci
+      - name: Generate Android project
+        run: npm run tauri -- android init --ci --skip-targets-install
+      - name: Build debug-signed test APK
+        run: npm run tauri -- android build --ci --debug --apk true --target aarch64
+      - name: Upload experimental Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: next27-android-arm64-experimental
+          if-no-files-found: error
+          path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
