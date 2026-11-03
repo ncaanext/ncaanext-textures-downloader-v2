@@ -105,7 +105,15 @@ fn get_git_path() -> Result<String, String> {
             return Ok("git".to_string());
         }
 
-        Err("Git not found. Please install Xcode Command Line Tools by running: xcode-select --install".to_string())
+        #[cfg(target_os = "macos")]
+        let message = "Git not found. Please install Xcode Command Line Tools by running: xcode-select --install";
+        #[cfg(target_os = "linux")]
+        let message = "Git not found. Install Git with your distribution package manager (for example: sudo apt install git).";
+        #[cfg(target_os = "android")]
+        let message = "This experimental Android build cannot install textures yet. Android storage access and a Git-free installer are still required.";
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "android")))]
+        let message = "Git not found. Please install Git for your platform.";
+        Err(message.to_string())
     }
 }
 
@@ -275,31 +283,46 @@ fn run_git_with_pty(
     default_stage: &str,
     detect_stages: bool,
 ) -> Result<(bool, String), String> {
-    // Use 'caffeinate' to prevent sleep, 'script' to create a PTY for git
-    // caffeinate -d: prevent display sleep (also prevents screensaver)
-    // script -q /dev/null: create PTY without saving typescript
-    let mut cmd_args: Vec<&str> = vec!["-d", "script", "-q", "/dev/null", git_path];
-    cmd_args.extend(args);
+    // macOS uses caffeinate and BSD script; Linux invokes Git directly.
+    // --progress is supplied by the caller, so a PTY is unnecessary on Linux.
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("caffeinate");
+        command.args(["-d", "script", "-q", "/dev/null", git_path]);
+        command
+    };
+    #[cfg(not(target_os = "macos"))]
+    let mut command = Command::new(git_path);
 
-    let mut cmd = Command::new("caffeinate")
-        .args(&cmd_args)
+    let mut cmd = command
+        .args(args)
         .current_dir(working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start command: {}", e))?;
+    let pid = cmd.id();
+    if let Ok(mut pids) = RUNNING_PIDS.lock() {
+        pids.push(pid);
+    }
 
     // Collect recent output for error reporting
     let recent_lines = Arc::new(Mutex::new(Vec::<String>::new()));
 
-    // script command outputs everything to stdout (including what would normally be stderr)
-    if let Some(stdout) = cmd.stdout.take() {
-        read_output_with_progress(stdout, window, default_stage, detect_stages, Some(recent_lines.clone()));
+    // Drain both pipes concurrently; Git sends progress to stderr on Linux.
+    let stdout = cmd.stdout.take().ok_or("Missing Git stdout")?;
+    let stderr = cmd.stderr.take().ok_or("Missing Git stderr")?;
+    std::thread::scope(|scope| {
+        let stdout_lines = recent_lines.clone();
+        let stderr_lines = recent_lines.clone();
+        scope.spawn(move || read_output_with_progress(stdout, window, default_stage, detect_stages, Some(stdout_lines)));
+        scope.spawn(move || read_output_with_progress(stderr, window, default_stage, detect_stages, Some(stderr_lines)));
+    });
+    let status = cmd.wait();
+    if let Ok(mut pids) = RUNNING_PIDS.lock() {
+        pids.retain(|&tracked| tracked != pid);
     }
-
-    let status = cmd
-        .wait()
-        .map_err(|e| format!("Command failed: {}", e))?;
+    let status = status.map_err(|e| format!("Command failed: {}", e))?;
 
     // Get recent output for error message
     let error_context = recent_lines.lock()

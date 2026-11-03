@@ -4,16 +4,16 @@
 
 /// Application title (also update in tauri.conf.json and frontend/config.ts)
 #[allow(dead_code)]
-pub const APP_TITLE: &str = "NCAA NEXT Textures Downloader";
+pub const APP_TITLE: &str = "NCAA NEXT 27 Textures Downloader";
 
 /// Repository owner (GitHub username or organization)
 pub const REPO_OWNER: &str = "ncaanext";
 
 /// Name of the texture mod repository
-pub const REPO_NAME: &str = "ncaa-next-26";
+pub const REPO_NAME: &str = "ncaa-next-27";
 
 /// Full URL to the git repository
-pub const REPO_URL: &str = "https://github.com/ncaanext/ncaa-next-26.git";
+pub const REPO_URL: &str = "https://github.com/ncaanext/ncaa-next-27.git";
 
 /// The target folder name (typically the PS2 game identifier like SLUS-XXXXX)
 pub const SLUS_FOLDER: &str = "SLUS-21214";

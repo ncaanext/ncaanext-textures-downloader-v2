@@ -1,3 +1,30 @@
+# NEXT 27 build branch
+
+This branch targets `ncaanext/ncaa-next-27`. The default `main` branch continues to target NEXT 26.
+
+## Build downloads
+
+Pushes and pull requests to `next27` run **Build NEXT 27**. You can also rerun it from Actions using **Run workflow** with branch `next27` selected. Download packages from the completed run's **Artifacts** section. Builds do not publish a GitHub release.
+
+| Platform | Artifact | Notes |
+| --- | --- | --- |
+| Windows x64 | `next27-windows-x64` | Portable ZIP including MinGit, plus NSIS installer. Unsigned. |
+| macOS Intel and Apple Silicon | `next27-macos-universal` | Universal DMG and zipped app; ad-hoc signed, not notarized. System Git required. |
+| Linux x64 | `next27-linux-x64` | Debian package and AppImage. System Git required (`sudo apt install git` on Debian/Ubuntu). |
+| Android ARM64 | `next27-android-arm64-experimental` | Debug-signed test APK. Not a production Android texture installer. |
+
+### Android limitations
+
+The APK job validates compilation and provides a test APK only. It does **not** port the desktop installer: Android has no bundled Git, the current directory picker does not support Android folders, and emulator texture folders require Android storage access rather than ordinary desktop paths. A Git-free initial installer and Android Storage Access Framework integration are still needed before this can be used to install or update emulator textures on Android. Do not distribute this APK as a working Android downloader. Debug signing is for testing; publishing and stable updates require a persistent release signing key.
+
+### Updating an existing NEXT 26 installation
+
+Keep the existing `SLUS-21214` folder. In the NEXT 27 desktop app choose its existing parent textures directory and run **Full Sync** once. This hashes files and skips unchanged content; it does not redownload the entire pack. `user-customs` remains protected by the existing sync implementation. The app identifier is retained so an in-place update can reuse desktop settings.
+
+Configuration is compiled into the app: update both `frontend/config.ts` and `src-tauri/src/config.rs`, then rebuild. Online `installer-data.json` supplies version/download metadata, not the repository selection.
+
+---
+
 # NCAA NEXT Mod Textures Installer/Updater Tool 
 
 This is a companion app for the [NCAA NEXT](https://www.ncaanext.com) mod that installs and updates the required textures pack.

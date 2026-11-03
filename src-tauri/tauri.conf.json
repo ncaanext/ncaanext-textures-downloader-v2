@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "NCAA NEXT Textures Downloader",
+  "productName": "NCAA NEXT 27 Textures Downloader",
   "version": "2.0.0",
   "identifier": "com.ncaanext.textures-downloader",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "NCAA NEXT Textures Downloader",
+        "title": "NCAA NEXT 27 Textures Downloader",
         "width": 600,
         "height": 700,
         "minWidth": 500,
@@ -34,7 +34,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-        "windows": {
+    "windows": {
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "installMode": "currentUser"

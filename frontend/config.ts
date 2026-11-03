@@ -2,13 +2,13 @@
 // Modify these values to adapt this app for other PS2 texture mod projects
 
 /// Application title displayed in the header
-export const APP_TITLE = "NCAA NEXT Textures Downloader";
+export const APP_TITLE = "NCAA NEXT 27 Textures Downloader";
 
 /// Repository owner (GitHub username or organization)
 export const REPO_OWNER = "ncaanext";
 
 /// Repository name
-export const REPO_NAME = "ncaa-next-26";
+export const REPO_NAME = "ncaa-next-27";
 
 /// Full URL to the repository (for linking)
 export const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
