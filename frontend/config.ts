@@ -8,7 +8,7 @@ export const APP_TITLE = "NCAA NEXT Textures Downloader";
 export const REPO_OWNER = "ncaanext";
 
 /// Repository name
-export const REPO_NAME = "ncaa-next-26";
+export const REPO_NAME = "ncaa-next-27";
 
 /// Full URL to the repository (for linking)
 export const REPO_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}`;
