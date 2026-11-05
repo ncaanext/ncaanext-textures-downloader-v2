@@ -1,5 +1,6 @@
 pub mod app_info;
 mod chunking;
+mod download;
 pub mod filesystem;
 pub mod install;
 mod power;

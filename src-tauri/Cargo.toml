@@ -1,8 +1,7 @@
 [package]
-name = "ncaanext-textures-downloader"
-version = "2.0.2"
-description = "NCAA NEXT Textures Downloader - Download and sync NCAA NEXT texture packs"
-authors = ["NCAA NEXT"]
+name = "ps2-textures-downloader"
+version = "2.0.3"
+description = "Download and sync texture replacement packs for PS2 mod projects"
 edition = "2021"
 
 [lib]
@@ -23,6 +22,7 @@ tokio = { version = "1", features = ["process", "io-util", "fs", "time"] }
 chrono = "0.4"
 regex = "1"
 reqwest = { version = "0.11", features = ["json"] }
+futures-util = "0.3"
 sha1 = "0.10"
 hex = "0.4"
 
