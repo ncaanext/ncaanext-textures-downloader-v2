@@ -23,3 +23,14 @@ pub const SPARSE_PATH: &str = "textures/SLUS-21214";
 
 /// Temporary directory name used during clone
 pub const TEMP_DIR_NAME: &str = "_temp_ncaa_repo";
+
+/// Target size of one download chunk during installation, in unique files.
+/// The installer splits the download along the repository's folders so a
+/// dropped connection only costs the chunk in progress. Texture files average
+/// roughly 0.5 MB, so 500 is about 250 MB per chunk; lower it for very large
+/// textures or users on slow connections.
+pub const CHUNK_MAX_BLOBS: usize = 500;
+
+/// Command-line budget for the folder arguments of one chunk. Windows limits
+/// `cmd.exe` command lines to 8191 characters, including the git path.
+pub const CHUNK_MAX_ARG_CHARS: usize = 6000;

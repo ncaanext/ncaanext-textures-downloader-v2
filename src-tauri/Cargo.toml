@@ -1,6 +1,6 @@
 [package]
 name = "ncaanext-textures-downloader"
-version = "2.0.1"
+version = "2.0.2"
 description = "NCAA NEXT Textures Downloader - Download and sync NCAA NEXT texture packs"
 authors = ["NCAA NEXT"]
 edition = "2021"
@@ -19,7 +19,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["process", "io-util", "fs"] }
+tokio = { version = "1", features = ["process", "io-util", "fs", "time"] }
 chrono = "0.4"
 regex = "1"
 reqwest = { version = "0.11", features = ["json"] }
@@ -27,6 +27,6 @@ sha1 = "0.10"
 hex = "0.4"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = ["Win32_System_Power"] }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_Threading"] }
 conpty = "0.5"
 

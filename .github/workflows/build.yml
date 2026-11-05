@@ -17,6 +17,9 @@ jobs:
             args: --target universal-apple-darwin
           - platform: windows-latest
             args: ""
+          # Oldest supported Ubuntu, so the binaries run on older distros too
+          - platform: ubuntu-22.04
+            args: --bundles appimage,deb
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -34,6 +37,12 @@ jobs:
         if: matrix.platform == 'macos-latest'
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Install dependencies (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev patchelf
 
       - name: Install frontend dependencies
         run: npm install
@@ -62,3 +71,12 @@ jobs:
           path: |
             src-tauri/target/release/*.exe
             src-tauri/target/release/resources/
+
+      - name: Upload artifacts (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/deb/*.deb

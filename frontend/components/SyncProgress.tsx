@@ -107,6 +107,13 @@ function SyncProgress({ messages, isComplete, result }: SyncProgressProps) {
         </span>
       </div>
 
+      {!isComplete && (
+        <p className="text-xs text-zinc-500">
+          Your computer is kept awake while this runs. Closing a laptop lid or choosing Sleep will
+          still interrupt it.
+        </p>
+      )}
+
       {/* Progress bar (only show when syncing/downloading/deleting/verifying) */}
       {(currentStage === "syncing" || currentStage === "downloading" || currentStage === "deleting" || currentStage === "verifying") && lastMessage?.total && (
         <div className="space-y-1">
