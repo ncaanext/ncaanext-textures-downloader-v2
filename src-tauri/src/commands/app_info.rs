@@ -1,4 +1,4 @@
-use crate::config::{REPO_NAME, REPO_OWNER};
+use crate::config::{user_agent, REPO_NAME, REPO_OWNER};
 use reqwest::Client;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
@@ -56,7 +56,7 @@ pub async fn fetch_installer_data() -> InstallerDataResult {
 
     match client
         .get(&url)
-        .header("User-Agent", "PS2-Textures-Downloader")
+        .header("User-Agent", user_agent())
         .send()
         .await
     {

@@ -1,12 +1,12 @@
+use super::download::{download_files, http_client, should_skip_path, DownloadJob};
 use super::power::KeepAwake;
-use crate::config::{REPO_NAME, REPO_OWNER, SLUS_FOLDER, SPARSE_PATH};
+use crate::config::{user_agent, REPO_NAME, REPO_OWNER, SLUS_FOLDER, SPARSE_PATH};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 use tauri::{Emitter, Window};
 
 /// GitHub tree entry from API response
@@ -56,7 +56,6 @@ struct CompareFile {
     filename: String,
     status: String, // "added", "modified", "removed", "renamed"
     previous_filename: Option<String>,
-    #[allow(dead_code)]
     sha: Option<String>,
 }
 
@@ -100,6 +99,9 @@ pub struct QuickCheckResult {
 pub struct VerificationFile {
     pub path: String,
     pub to_disabled: bool,
+    /// Blob id in the repository, so identical files are downloaded once
+    #[serde(default)]
+    pub sha: Option<String>,
 }
 
 /// Sync analysis result - what will happen if sync proceeds
@@ -120,6 +122,9 @@ pub struct SyncAnalysis {
 pub struct SyncFile {
     pub path: String,
     pub to_disabled: bool,
+    /// Blob id in the repository, so identical files are downloaded once
+    #[serde(default)]
+    pub sha: Option<String>,
 }
 
 /// Check if content is likely a text file (no null bytes in first 8KB)
@@ -235,10 +240,16 @@ fn cleanup_empty_directories_recursive(dir: &Path, is_root: bool, window: &Windo
         }
     };
 
-    // First, recurse into subdirectories
+    // First, recurse into subdirectories. Protected folders (user-customs,
+    // hidden folders) are never entered: nothing inside them is deleted, and
+    // they are never removed even when empty.
     for entry in &entries {
         let path = entry.path();
-        if path.is_dir() {
+        let protected = entry
+            .file_name()
+            .to_str()
+            .map_or(true, |name| should_skip_path(name));
+        if path.is_dir() && !protected {
             removed += cleanup_empty_directories_recursive(&path, false, window);
         }
     }
@@ -287,20 +298,6 @@ fn cleanup_empty_directories_recursive(dir: &Path, is_root: bool, window: &Windo
     removed
 }
 
-/// Check if a path should be skipped (user-customs folder or hidden files)
-fn should_skip_path(path: &str) -> bool {
-    // Skip user-customs folder
-    if path.contains("user-customs") {
-        return true;
-    }
-    // Skip hidden files/directories (starting with .)
-    for component in path.split('/') {
-        if component.starts_with('.') {
-            return true;
-        }
-    }
-    false
-}
 
 /// Check if a filename is a disabled (dash-prefixed) version
 fn is_disabled_filename(filename: &str) -> bool {
@@ -345,7 +342,7 @@ fn get_enabled_path(path: &str) -> Option<String> {
 fn build_request(client: &Client, url: &str, token: &Option<String>) -> reqwest::RequestBuilder {
     let mut req = client
         .get(url)
-        .header("User-Agent", "NCAA-NEXT-Textures-Downloader")
+        .header("User-Agent", user_agent())
         .header("Accept", "application/vnd.github.v3+json");
 
     if let Some(t) = token {
@@ -428,7 +425,7 @@ async fn fetch_tree(client: &Client, tree_sha: &str, recursive: bool, token: &Op
         .map_err(|e| format!("Failed to parse tree response: {}", e))
 }
 
-/// Navigate to a subtree by path (e.g., "textures/SLUS-21214")
+/// Navigate to a subtree by path (e.g., "textures/SLUS-XXXXX")
 async fn get_subtree_sha(client: &Client, root_sha: &str, path: &str, token: &Option<String>) -> Result<String, String> {
     let parts: Vec<&str> = path.split('/').collect();
     let mut current_sha = root_sha.to_string();
@@ -658,91 +655,50 @@ fn build_local_file_map_recursive(
     Ok(())
 }
 
-/// HTTP client for sync requests. Without timeouts a stalled connection
-/// (Wi-Fi dropped, network changed) leaves a request waiting forever, and
-/// the sync never finishes or fails. The total timeout is per request and
-/// generous enough for the largest API responses on a slow connection.
-fn http_client() -> Client {
-    Client::builder()
-        .connect_timeout(Duration::from_secs(30))
-        .timeout(Duration::from_secs(300))
-        .build()
-        .unwrap_or_else(|_| Client::new())
+/// Refuse to act on a protected local path (anything under a user-customs
+/// folder, or hidden). The lists the sync works from already exclude these;
+/// this is the backstop, so a mistake there fails instead of touching the
+/// user's files.
+fn ensure_unprotected(slus_path: &Path, local_path: &Path) -> Result<(), String> {
+    let relative = local_path.strip_prefix(slus_path).unwrap_or(local_path);
+    let relative = relative.to_string_lossy().replace('\\', "/");
+    if should_skip_path(&relative) {
+        return Err(format!("Refusing to modify protected path: {}", relative));
+    }
+    Ok(())
 }
 
-/// Delays between attempts at downloading one file; one more attempt than entries
-const DOWNLOAD_RETRY_DELAYS_SECS: [u64; 2] = [10, 30];
+/// Delete a synced file (after checking it isn't protected), then its
+/// parent folder if that is now empty
+fn remove_synced_file(slus_path: &Path, local_path: &Path) -> Result<(), String> {
+    ensure_unprotected(slus_path, local_path)?;
+    fs::remove_file(local_path)
+        .map_err(|e| format!("Failed to delete {}: {}", local_path.display(), e))?;
+    if let Some(parent) = local_path.parent() {
+        let _ = fs::remove_dir(parent);
+    }
+    Ok(())
+}
 
-/// Download a file from GitHub raw content, retrying after network errors
-/// and server errors. A client error (such as 404) fails immediately.
-async fn download_file(
-    client: &Client,
-    relative_path: &str,
-    dest_path: &Path,
-    token: &Option<String>,
-) -> Result<(), String> {
-    let mut attempt = 0;
-    loop {
-        match download_file_once(client, relative_path, dest_path, token).await {
-            Ok(()) => return Ok(()),
-            Err((message, retryable)) => match DOWNLOAD_RETRY_DELAYS_SECS.get(attempt) {
-                Some(&delay) if retryable => {
-                    attempt += 1;
-                    tokio::time::sleep(Duration::from_secs(delay)).await;
-                }
-                _ => return Err(message),
-            },
+/// Whether two existing paths name the same file, e.g. spellings differing
+/// only in case on a case-insensitive filesystem. False if either is missing.
+fn is_same_file(a: &Path, b: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        match (fs::metadata(a), fs::metadata(b)) {
+            (Ok(ma), Ok(mb)) => ma.dev() == mb.dev() && ma.ino() == mb.ino(),
+            _ => false,
         }
     }
-}
-
-/// One download attempt. Errors carry whether a retry could help.
-async fn download_file_once(
-    client: &Client,
-    relative_path: &str,
-    dest_path: &Path,
-    token: &Option<String>,
-) -> Result<(), (String, bool)> {
-    let url = format!(
-        "https://raw.githubusercontent.com/{}/{}/main/{}/{}",
-        REPO_OWNER, REPO_NAME, SPARSE_PATH, relative_path
-    );
-
-    let mut req = client
-        .get(&url)
-        .header("User-Agent", "NCAA-NEXT-Textures-Downloader");
-
-    if let Some(t) = token {
-        req = req.header("Authorization", format!("Bearer {}", t));
+    #[cfg(not(unix))]
+    {
+        // canonicalize resolves to the on-disk spelling of the path
+        match (fs::canonicalize(a), fs::canonicalize(b)) {
+            (Ok(ca), Ok(cb)) => ca == cb,
+            _ => false,
+        }
     }
-
-    let response = req
-        .send()
-        .await
-        .map_err(|e| (format!("Failed to download file: {}", e), true))?;
-
-    if !response.status().is_success() {
-        return Err((
-            format!("Failed to download {}: HTTP {}", relative_path, response.status()),
-            !response.status().is_client_error(),
-        ));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| (format!("Failed to read file content: {}", e), true))?;
-
-    // Ensure parent directory exists
-    if let Some(parent) = dest_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| (format!("Failed to create directory: {}", e), false))?;
-    }
-
-    fs::write(dest_path, &bytes)
-        .map_err(|e| (format!("Failed to write file: {}", e), false))?;
-
-    Ok(())
 }
 
 /// Check if a local file exists (either normal or disabled version)
@@ -806,11 +762,25 @@ async fn run_incremental_sync(
         return Err("TRUNCATED: Too many changed files, falling back to full sync".to_string());
     }
 
-    // Filter to only files in our sparse path
+    // Path relative to the texture folder, for repository paths the sync may
+    // act on: inside the texture folder and not protected (user-customs,
+    // hidden files)
     let prefix = format!("{}/", SPARSE_PATH);
+    let syncable = |path: &str| -> Option<String> {
+        path.strip_prefix(&prefix)
+            .filter(|_| !should_skip_path(path))
+            .map(str::to_string)
+    };
+
+    // Changes the sync acts on. A rename counts if either end is syncable:
+    // renamed out (or into a protected folder) leaves an old copy to remove,
+    // renamed in (or out of a protected folder) brings a new file.
     let relevant_files: Vec<CompareFile> = changed_files
         .into_iter()
-        .filter(|f| f.filename.starts_with(&prefix) && !should_skip_path(&f.filename))
+        .filter(|f| {
+            syncable(&f.filename).is_some()
+                || (f.status == "renamed" && f.previous_filename.as_deref().and_then(syncable).is_some())
+        })
         .collect();
 
     let total = relevant_files.len() as u32;
@@ -821,13 +791,34 @@ async fn run_incremental_sync(
         total: None,
     });
 
-    let mut downloaded: u32 = 0;
     let mut deleted: u32 = 0;
     let mut renamed: u32 = 0;
     let mut skipped: u32 = 0;
 
+    // Renames and deletions happen here, in order; downloads are collected
+    // and run in parallel afterwards.
+    let mut downloads: Vec<DownloadJob> = Vec::new();
+    // Old copies of files whose replacement is being downloaded. Removed only
+    // once the downloads succeed, so a failure never loses a file (or, for a
+    // disabled texture, the user's choice to disable it).
+    // (relative path, old local path, download destination)
+    let mut replaced: Vec<(String, PathBuf, PathBuf)> = Vec::new();
+
     for (i, file) in relevant_files.iter().enumerate() {
-        let relative_path = file.filename.strip_prefix(&prefix).unwrap().to_string();
+        let old_rel_path = file.previous_filename.as_deref().and_then(syncable);
+
+        let Some(relative_path) = syncable(&file.filename) else {
+            // Renamed out of the texture folder, or into a protected folder:
+            // only the old copy is ours to remove
+            if let Some(old_rel_path) = old_rel_path {
+                let (exists, _, old_local_path) = find_local_file(&slus_path, &old_rel_path);
+                if exists {
+                    remove_synced_file(&slus_path, &old_local_path)?;
+                    deleted += 1;
+                }
+            }
+            continue;
+        };
 
         let _ = window.emit("sync-progress", SyncProgressPayload {
             stage: "syncing".to_string(),
@@ -841,54 +832,59 @@ async fn run_incremental_sync(
                 // Check if we have a disabled version locally
                 let (exists, is_disabled, local_path) = find_local_file(&slus_path, &relative_path);
 
-                if exists && is_disabled {
+                let dest = if exists && is_disabled {
                     // Download to the disabled path (preserve disabled state)
-                    let disabled_rel_path = get_disabled_path(&relative_path);
-                    let dest = slus_path.join(&disabled_rel_path);
-                    download_file(&client, &relative_path, &dest, token).await?;
+                    slus_path.join(get_disabled_path(&relative_path))
                 } else {
-                    // Download to normal path
-                    download_file(&client, &relative_path, &local_path, token).await?;
-                }
-                downloaded += 1;
+                    local_path
+                };
+                downloads.push(DownloadJob {
+                    path: relative_path,
+                    dest,
+                    sha: file.sha.clone(),
+                });
             }
             "removed" => {
                 // Delete the file (check both normal and disabled versions)
                 let (exists, _, local_path) = find_local_file(&slus_path, &relative_path);
                 if exists {
-                    fs::remove_file(&local_path)
-                        .map_err(|e| format!("Failed to delete {}: {}", relative_path, e))?;
+                    remove_synced_file(&slus_path, &local_path)?;
                     deleted += 1;
-
-                    // Try to remove empty parent directories
-                    if let Some(parent) = local_path.parent() {
-                        let _ = fs::remove_dir(parent);
-                    }
                 }
             }
             "renamed" => {
-                if let Some(old_filename) = &file.previous_filename {
-                    if old_filename.starts_with(&prefix) {
-                        let old_rel_path = old_filename.strip_prefix(&prefix).unwrap();
-                        let (exists, is_disabled, old_local_path) = find_local_file(&slus_path, old_rel_path);
+                // The old file's local copy, unless it was outside the texture
+                // folder or in a protected one (then it stays where it is)
+                let old_local = old_rel_path
+                    .map(|old_rel_path| find_local_file(&slus_path, &old_rel_path))
+                    .filter(|(exists, _, _)| *exists);
 
-                        if exists {
-                            // Determine new path (preserve disabled state)
-                            let new_local_path = if is_disabled {
-                                slus_path.join(get_disabled_path(&relative_path))
-                            } else {
-                                slus_path.join(&relative_path)
-                            };
+                match old_local {
+                    Some((_, is_disabled, old_local_path)) => {
+                        // Preserve disabled state at the new path
+                        let new_local_path = if is_disabled {
+                            slus_path.join(get_disabled_path(&relative_path))
+                        } else {
+                            slus_path.join(&relative_path)
+                        };
 
-                            // Ensure parent directory exists
+                        // GitHub also reports a rename when a deleted file is paired with a
+                        // similar new one whose content differs, so moving the old file
+                        // would keep stale content. Only move it when it already matches.
+                        let unchanged = file.sha.as_deref().map_or(false, |sha| {
+                            compute_git_blob_sha_with_normalization(&old_local_path, Some(sha))
+                                .map_or(false, |local_sha| local_sha == sha)
+                        });
+
+                        if unchanged {
+                            ensure_unprotected(&slus_path, &old_local_path)?;
+                            ensure_unprotected(&slus_path, &new_local_path)?;
                             if let Some(parent) = new_local_path.parent() {
                                 fs::create_dir_all(parent)
                                     .map_err(|e| format!("Failed to create directory: {}", e))?;
                             }
-
-                            // Move the file
                             fs::rename(&old_local_path, &new_local_path)
-                                .map_err(|e| format!("Failed to rename {}: {}", old_rel_path, e))?;
+                                .map_err(|e| format!("Failed to rename {}: {}", relative_path, e))?;
                             renamed += 1;
 
                             // Try to remove empty old parent directories
@@ -896,17 +892,51 @@ async fn run_incremental_sync(
                                 let _ = fs::remove_dir(parent);
                             }
                         } else {
-                            // Old file doesn't exist locally, download the new one
-                            let dest = slus_path.join(&relative_path);
-                            download_file(&client, &relative_path, &dest, token).await?;
-                            downloaded += 1;
+                            replaced.push((
+                                relative_path.clone(),
+                                old_local_path,
+                                new_local_path.clone(),
+                            ));
+                            downloads.push(DownloadJob {
+                                path: relative_path,
+                                dest: new_local_path,
+                                sha: file.sha.clone(),
+                            });
                         }
+                    }
+                    None => {
+                        // No local copy to move: download the new file
+                        downloads.push(DownloadJob {
+                            dest: slus_path.join(&relative_path),
+                            path: relative_path,
+                            sha: file.sha.clone(),
+                        });
                     }
                 }
             }
             _ => {
                 skipped += 1;
             }
+        }
+    }
+
+    let downloaded = download_files(&client, downloads, token, |done, total, path| {
+        let _ = window.emit("sync-progress", SyncProgressPayload {
+            stage: "downloading".to_string(),
+            message: format!("Downloading: {}", path),
+            current: Some(done),
+            total: Some(total),
+        });
+    })
+    .await?;
+
+    // Replacements are in place: remove the old copies they superseded
+    for (relative_path, old_local_path, new_local_path) in replaced {
+        // On a case-insensitive filesystem a case-only rename makes the old
+        // path another spelling of the file just downloaded: keep it
+        if old_local_path.exists() && !is_same_file(&old_local_path, &new_local_path) {
+            remove_synced_file(&slus_path, &old_local_path)
+                .map_err(|e| format!("Failed to remove the old copy of {}: {}", relative_path, e))?;
         }
     }
 
@@ -1079,25 +1109,27 @@ async fn run_full_sync(
 
     // Download files
     let client = http_client();
-    let mut downloaded: u32 = 0;
-
-    for (i, (path, is_disabled)) in files_to_download.iter().enumerate() {
+    let jobs = files_to_download
+        .iter()
+        .map(|(path, is_disabled)| DownloadJob {
+            path: path.clone(),
+            dest: if *is_disabled {
+                slus_path.join(get_disabled_path(path))
+            } else {
+                slus_path.join(path)
+            },
+            sha: remote_files.get(path).cloned(),
+        })
+        .collect();
+    let downloaded = download_files(&client, jobs, token, |done, total, path| {
         let _ = window.emit("sync-progress", SyncProgressPayload {
             stage: "downloading".to_string(),
             message: format!("Downloading: {}", path),
-            current: Some(i as u32 + 1),
-            total: Some(download_count),
+            current: Some(done),
+            total: Some(total),
         });
-
-        let dest_path = if *is_disabled {
-            slus_path.join(get_disabled_path(path))
-        } else {
-            slus_path.join(path)
-        };
-
-        download_file(&client, path, &dest_path, token).await?;
-        downloaded += 1;
-    }
+    })
+    .await?;
 
     // Delete files
     let mut deleted: u32 = 0;
@@ -1112,13 +1144,8 @@ async fn run_full_sync(
 
         let file_path = slus_path.join(path);
         if file_path.exists() {
-            fs::remove_file(&file_path)
-                .map_err(|e| format!("Failed to delete {}: {}", path, e))?;
+            remove_synced_file(&slus_path, &file_path)?;
             deleted += 1;
-
-            if let Some(parent) = file_path.parent() {
-                let _ = fs::remove_dir(parent);
-            }
         }
     }
 
@@ -1199,6 +1226,7 @@ pub async fn run_verification_scan(
             files_to_download.push(VerificationFile {
                 path: repo_path.clone(),
                 to_disabled: false,
+                sha: Some(repo_sha.clone()),
             });
             continue;
         }
@@ -1217,6 +1245,7 @@ pub async fn run_verification_scan(
             files_to_download.push(VerificationFile {
                 path: repo_path.clone(),
                 to_disabled: true,
+                sha: Some(repo_sha.clone()),
             });
             continue;
         }
@@ -1225,6 +1254,7 @@ pub async fn run_verification_scan(
         files_to_download.push(VerificationFile {
             path: repo_path.clone(),
             to_disabled: false,
+            sha: Some(repo_sha.clone()),
         });
     }
 
@@ -1304,23 +1334,27 @@ pub async fn apply_verification_fixes(
             total: None,
         });
 
-        for (i, file) in files_to_download.iter().enumerate() {
+        let jobs = files_to_download
+            .iter()
+            .map(|file| DownloadJob {
+                path: file.path.clone(),
+                dest: if file.to_disabled {
+                    slus_path.join(get_disabled_path(&file.path))
+                } else {
+                    slus_path.join(&file.path)
+                },
+                sha: file.sha.clone(),
+            })
+            .collect();
+        downloaded = download_files(&client, jobs, &github_token, |done, total, path| {
             let _ = window.emit("sync-progress", SyncProgressPayload {
                 stage: "verifying".to_string(),
-                message: format!("Downloading: {}", file.path),
-                current: Some(i as u32 + 1),
+                message: format!("Downloading: {}", path),
+                current: Some(done),
                 total: Some(total),
             });
-
-            let dest_path = if file.to_disabled {
-                slus_path.join(get_disabled_path(&file.path))
-            } else {
-                slus_path.join(&file.path)
-            };
-
-            download_file(&client, &file.path, &dest_path, &github_token).await?;
-            downloaded += 1;
-        }
+        })
+        .await?;
     }
 
     // Delete orphaned files
@@ -1336,13 +1370,8 @@ pub async fn apply_verification_fixes(
 
             let file_path = slus_path.join(path);
             if file_path.exists() {
-                fs::remove_file(&file_path)
-                    .map_err(|e| format!("Failed to delete {}: {}", path, e))?;
+                remove_synced_file(&slus_path, &file_path)?;
                 deleted += 1;
-
-                if let Some(parent) = file_path.parent() {
-                    let _ = fs::remove_dir(parent);
-                }
             }
         }
     }
@@ -1609,7 +1638,7 @@ pub async fn analyze_full_sync(
                 }
             }
             // File exists but different - will be REPLACED
-            files_to_replace.push(SyncFile { path: path.clone(), to_disabled: false });
+            files_to_replace.push(SyncFile { path: path.clone(), to_disabled: false, sha: Some(remote_sha.clone()) });
             continue;
         }
 
@@ -1623,12 +1652,12 @@ pub async fn analyze_full_sync(
                 }
             }
             // Disabled file exists but different - will be REPLACED
-            files_to_replace.push(SyncFile { path: path.clone(), to_disabled: true });
+            files_to_replace.push(SyncFile { path: path.clone(), to_disabled: true, sha: Some(remote_sha.clone()) });
             continue;
         }
 
         // File doesn't exist locally - will be ADDED
-        files_to_add.push(SyncFile { path: path.clone(), to_disabled: false });
+        files_to_add.push(SyncFile { path: path.clone(), to_disabled: false, sha: Some(remote_sha.clone()) });
     }
 
     // Determine files to delete
@@ -1713,25 +1742,27 @@ pub async fn execute_analyzed_sync(
 
     // Download files
     let client = http_client();
-    let mut downloaded: u32 = 0;
-
-    for (i, file) in files_to_download.iter().enumerate() {
+    let jobs = files_to_download
+        .iter()
+        .map(|file| DownloadJob {
+            path: file.path.clone(),
+            dest: if file.to_disabled {
+                slus_path.join(get_disabled_path(&file.path))
+            } else {
+                slus_path.join(&file.path)
+            },
+            sha: file.sha.clone(),
+        })
+        .collect();
+    let downloaded = download_files(&client, jobs, &github_token, |done, total, path| {
         let _ = window.emit("sync-progress", SyncProgressPayload {
             stage: "downloading".to_string(),
-            message: format!("Downloading: {}", file.path),
-            current: Some(i as u32 + 1),
-            total: Some(download_count),
+            message: format!("Downloading: {}", path),
+            current: Some(done),
+            total: Some(total),
         });
-
-        let dest_path = if file.to_disabled {
-            slus_path.join(get_disabled_path(&file.path))
-        } else {
-            slus_path.join(&file.path)
-        };
-
-        download_file(&client, &file.path, &dest_path, &github_token).await?;
-        downloaded += 1;
-    }
+    })
+    .await?;
 
     // Delete files
     let mut deleted: u32 = 0;
@@ -1746,8 +1777,7 @@ pub async fn execute_analyzed_sync(
 
         let file_path = slus_path.join(path);
         if file_path.exists() {
-            fs::remove_file(&file_path)
-                .map_err(|e| format!("Failed to delete {}: {}", path, e))?;
+            remove_synced_file(&slus_path, &file_path)?;
             deleted += 1;
         }
     }
