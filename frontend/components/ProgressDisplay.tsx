@@ -97,6 +97,13 @@ function ProgressDisplay({ messages, percent, stage, isComplete }: ProgressDispl
         </span>
       </div>
 
+      {!isComplete && (
+        <p className="text-xs text-zinc-500">
+          Your computer is kept awake while this runs. Closing a laptop lid or choosing Sleep will
+          still interrupt it.
+        </p>
+      )}
+
       {/* Progress bar */}
       <div className="space-y-1">
         <div className="flex justify-between text-xs text-zinc-400">

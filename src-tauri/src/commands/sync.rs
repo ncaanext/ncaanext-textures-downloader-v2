@@ -1,3 +1,4 @@
+use super::power::KeepAwake;
 use crate::config::{REPO_NAME, REPO_OWNER, SLUS_FOLDER, SPARSE_PATH};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -5,6 +6,7 @@ use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tauri::{Emitter, Window};
 
 /// GitHub tree entry from API response
@@ -366,7 +368,7 @@ async fn get_latest_commit_with_token(token: &Option<String>) -> Result<String, 
 
 /// Fetch commit details (sha and date) for a given commit reference
 async fn get_commit_details_with_token(commit_ref: &str, token: &Option<String>) -> Result<(String, String), String> {
-    let client = Client::new();
+    let client = http_client();
     let url = format!(
         "https://api.github.com/repos/{}/{}/commits/{}",
         REPO_OWNER, REPO_NAME, commit_ref
@@ -491,7 +493,7 @@ async fn fetch_tree_files_recursive(
 
 /// Fetch the GitHub tree for the sparse path (used for full sync)
 async fn fetch_github_tree(token: &Option<String>) -> Result<(HashMap<String, String>, String), String> {
-    let client = Client::new();
+    let client = http_client();
 
     // First get the latest commit SHA
     let commit_sha = get_latest_commit_with_token(token).await?;
@@ -516,7 +518,7 @@ async fn fetch_changed_files(
     head_sha: &str,
     token: &Option<String>,
 ) -> Result<(Vec<CompareFile>, bool), String> {
-    let client = Client::new();
+    let client = http_client();
     let url = format!(
         "https://api.github.com/repos/{}/{}/compare/{}...{}",
         REPO_OWNER, REPO_NAME, base_sha, head_sha
@@ -656,13 +658,51 @@ fn build_local_file_map_recursive(
     Ok(())
 }
 
-/// Download a file from GitHub raw content
+/// HTTP client for sync requests. Without timeouts a stalled connection
+/// (Wi-Fi dropped, network changed) leaves a request waiting forever, and
+/// the sync never finishes or fails. The total timeout is per request and
+/// generous enough for the largest API responses on a slow connection.
+fn http_client() -> Client {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .unwrap_or_else(|_| Client::new())
+}
+
+/// Delays between attempts at downloading one file; one more attempt than entries
+const DOWNLOAD_RETRY_DELAYS_SECS: [u64; 2] = [10, 30];
+
+/// Download a file from GitHub raw content, retrying after network errors
+/// and server errors. A client error (such as 404) fails immediately.
 async fn download_file(
     client: &Client,
     relative_path: &str,
     dest_path: &Path,
     token: &Option<String>,
 ) -> Result<(), String> {
+    let mut attempt = 0;
+    loop {
+        match download_file_once(client, relative_path, dest_path, token).await {
+            Ok(()) => return Ok(()),
+            Err((message, retryable)) => match DOWNLOAD_RETRY_DELAYS_SECS.get(attempt) {
+                Some(&delay) if retryable => {
+                    attempt += 1;
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                }
+                _ => return Err(message),
+            },
+        }
+    }
+}
+
+/// One download attempt. Errors carry whether a retry could help.
+async fn download_file_once(
+    client: &Client,
+    relative_path: &str,
+    dest_path: &Path,
+    token: &Option<String>,
+) -> Result<(), (String, bool)> {
     let url = format!(
         "https://raw.githubusercontent.com/{}/{}/main/{}/{}",
         REPO_OWNER, REPO_NAME, SPARSE_PATH, relative_path
@@ -679,28 +719,28 @@ async fn download_file(
     let response = req
         .send()
         .await
-        .map_err(|e| format!("Failed to download file: {}", e))?;
+        .map_err(|e| (format!("Failed to download file: {}", e), true))?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "Failed to download {}: HTTP {}",
-            relative_path,
-            response.status()
+        return Err((
+            format!("Failed to download {}: HTTP {}", relative_path, response.status()),
+            !response.status().is_client_error(),
         ));
     }
 
     let bytes = response
         .bytes()
         .await
-        .map_err(|e| format!("Failed to read file content: {}", e))?;
+        .map_err(|e| (format!("Failed to read file content: {}", e), true))?;
 
     // Ensure parent directory exists
     if let Some(parent) = dest_path.parent() {
         fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+            .map_err(|e| (format!("Failed to create directory: {}", e), false))?;
     }
 
-    fs::write(dest_path, &bytes).map_err(|e| format!("Failed to write file: {}", e))?;
+    fs::write(dest_path, &bytes)
+        .map_err(|e| (format!("Failed to write file: {}", e), false))?;
 
     Ok(())
 }
@@ -730,7 +770,7 @@ async fn run_incremental_sync(
 ) -> Result<SyncResult, String> {
     let textures_path = PathBuf::from(textures_dir);
     let slus_path = textures_path.join(SLUS_FOLDER);
-    let client = Client::new();
+    let client = http_client();
 
     let _ = window.emit("sync-progress", SyncProgressPayload {
         stage: "fetching".to_string(),
@@ -1038,7 +1078,7 @@ async fn run_full_sync(
     });
 
     // Download files
-    let client = Client::new();
+    let client = http_client();
     let mut downloaded: u32 = 0;
 
     for (i, (path, is_disabled)) in files_to_download.iter().enumerate() {
@@ -1244,9 +1284,12 @@ pub async fn apply_verification_fixes(
     github_token: Option<String>,
     window: Window,
 ) -> Result<(u32, u32), String> {
+    // Idle sleep drops the connection mid-download
+    let _awake = KeepAwake::new("Syncing textures");
+
     let textures_path = PathBuf::from(&textures_dir);
     let slus_path = textures_path.join(SLUS_FOLDER);
-    let client = Client::new();
+    let client = http_client();
 
     let mut downloaded: u32 = 0;
     let mut deleted: u32 = 0;
@@ -1339,6 +1382,9 @@ pub async fn run_sync(
     full_sync: bool,
     window: Window,
 ) -> Result<SyncResult, String> {
+    // Idle sleep drops the connection mid-download
+    let _awake = KeepAwake::new("Syncing textures");
+
     let result = if full_sync || last_sync_commit.is_none() {
         run_full_sync(&textures_dir, &github_token, &window).await?
     } else {
@@ -1484,6 +1530,9 @@ pub async fn analyze_full_sync(
     github_token: Option<String>,
     window: Window,
 ) -> Result<SyncAnalysis, String> {
+    // Idle sleep drops the connection mid-download
+    let _awake = KeepAwake::new("Syncing textures");
+
     let textures_path = PathBuf::from(&textures_dir);
     let slus_path = textures_path.join(SLUS_FOLDER);
 
@@ -1641,6 +1690,9 @@ pub async fn execute_analyzed_sync(
     github_token: Option<String>,
     window: Window,
 ) -> Result<SyncResult, String> {
+    // Idle sleep drops the connection mid-download
+    let _awake = KeepAwake::new("Syncing textures");
+
     let textures_path = PathBuf::from(&textures_dir);
     let slus_path = textures_path.join(SLUS_FOLDER);
 
@@ -1660,7 +1712,7 @@ pub async fn execute_analyzed_sync(
     });
 
     // Download files
-    let client = Client::new();
+    let client = http_client();
     let mut downloaded: u32 = 0;
 
     for (i, file) in files_to_download.iter().enumerate() {

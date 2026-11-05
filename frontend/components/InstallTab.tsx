@@ -50,17 +50,13 @@ function InstallTab({
 
       if (stage === "complete") {
         setInstallStatus("complete");
-        // Get the latest commit SHA and notify parent
-        invoke<string>("get_latest_commit")
-          .then((sha) => onInstallComplete(sha))
-          .catch(console.error);
       }
     });
 
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [onInstallComplete]);
+  }, []);
 
   const handleStartInstall = async () => {
     if (!texturesDir) {
@@ -92,7 +88,10 @@ function InstallTab({
     setErrorMessage(null);
 
     try {
-      await invoke("start_installation", { texturesDir });
+      // Resolves with the commit that was installed, which may be older than
+      // the latest one if the install resumed an earlier download
+      const commitSha = await invoke<string>("start_installation", { texturesDir });
+      onInstallComplete(commitSha);
     } catch (e) {
       setInstallStatus("error");
       setErrorMessage(`Installation failed: ${e}`);
